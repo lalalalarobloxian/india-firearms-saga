@@ -165,6 +165,7 @@ export class Game {
     this.buildViewModel();
     this.bind();
     this.nextWave();
+    (window as unknown as Record<string, unknown>)["__astra"] = this;
     this.loop();
   }
 

@@ -68,7 +68,7 @@ export class Game {
   private mapDef: MapDef;
 
   // player
-  private pos = new THREE.Vector3(0, PLAYER_HEIGHT, 14);
+  private pos = new THREE.Vector3(0, PLAYER_HEIGHT, 34);
   private vel = new THREE.Vector3();
   private yaw = 0;
   private pitch = 0;
@@ -142,6 +142,10 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(90, container.clientWidth / container.clientHeight, 0.05, 800);
     this.camera.add(this.viewModel);
     this.scene.add(this.camera);
+    // gentle fill light so the weapon model reads against dark scenes
+    const viewLight = new THREE.PointLight(0xfff0d8, 3.2, 6, 2);
+    viewLight.position.set(0.3, 0.25, 0.2);
+    this.camera.add(viewLight);
 
     this.muzzleLight = new THREE.PointLight(0xffb257, 0, 14, 2);
     this.scene.add(this.muzzleLight);
@@ -394,6 +398,7 @@ export class Game {
       if (o instanceof THREE.Mesh) o.castShadow = false;
     });
     g.renderOrder = 10;
+    g.scale.setScalar(0.66);
     this.viewModel.add(g);
     this.muzzle.position.set(0, 0.03, -w.length * 0.9);
     g.add(this.muzzle);
@@ -401,7 +406,7 @@ export class Game {
   }
 
   private hipPos() {
-    return new THREE.Vector3(0.22, -0.2, -0.34);
+    return new THREE.Vector3(0.2, -0.17, -0.48);
   }
 
   /* ------------------------------- input -------------------------------- */
@@ -902,7 +907,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
 
     // view model placement
-    const adsPos = new THREE.Vector3(0, w.scoped ? -0.055 : -0.062, -0.24);
+    const adsPos = new THREE.Vector3(0, w.scoped ? -0.05 : -0.055, -0.36);
     const hip = this.hipPos();
     const target = this.ads ? adsPos : hip;
     const bobModel = new THREE.Vector3(bobX * 0.6, bobY * 0.6, this.punch * 0.9);
@@ -1066,7 +1071,9 @@ export class Game {
     this.shotsFired = 0;
     this.shotsHit = 0;
     this.feed = [];
-    this.pos.set(0, PLAYER_HEIGHT, 14);
+    this.pos.set(0, PLAYER_HEIGHT, 34);
+    this.yaw = 0;
+    this.pitch = 0;
     this.vel.set(0, 0, 0);
     this.mags = WEAPONS.map((w) => w.magSize);
     this.reserves = WEAPONS.map((w) => w.reserve);

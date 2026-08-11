@@ -199,7 +199,10 @@ export class Game {
 
   private buildWorld() {
     const m = this.mapDef;
-    this.scene.background = skyTexture(m.sky[0], m.sky[1]);
+    const sky = skyTexture(m.sky[0], m.sky[1]);
+    this.scene.background = sky;
+    this.scene.environment = sky;
+    this.scene.environmentIntensity = 0.55;
     this.scene.fog = new THREE.Fog(m.fog, 40, 220);
 
     const hemi = new THREE.HemisphereLight(m.sky[0], m.ground, 1.1);
@@ -347,7 +350,7 @@ export class Game {
     this.viewModel.clear();
     this.viewModel.add(this.muzzleFlash);
     const w = WEAPONS[this.wIndex]!;
-    const metal = new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.42, metalness: 0.85 });
+    const metal = new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.38, metalness: 0.6 });
     const wood = new THREE.MeshStandardMaterial({ color: w.woodColor, roughness: 0.72, metalness: 0.05 });
     const g = new THREE.Group();
 

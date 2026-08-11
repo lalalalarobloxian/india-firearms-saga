@@ -388,8 +388,9 @@ export class Game {
     body.position.set(0, 0, -w.length * 0.18);
     g.add(body);
 
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.14, w.length * 0.42), wood);
-    stock.position.set(0, -0.02, w.length * 0.26);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, w.length * 0.3), wood);
+    stock.position.set(0, -0.03, w.length * 0.2);
+    stock.rotation.x = 0.03;
     g.add(stock);
 
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, w.length * 0.7, 12), metal);
@@ -432,7 +433,8 @@ export class Game {
     });
     g.renderOrder = 10;
     g.scale.setScalar(0.5);
-    g.rotation.y = 0.02;
+    g.rotation.y = -0.07;
+    g.position.set(0.02, 0, 0);
     this.viewModel.add(g);
     this.muzzle.position.set(0, 0.03, -w.length * 0.9);
     g.add(this.muzzle);

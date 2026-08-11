@@ -201,10 +201,40 @@ export class Game {
   private buildWorld() {
     const m = this.mapDef;
     const sky = skyTexture(m.sky[0], m.sky[1]);
-    this.scene.background = sky;
     this.scene.environment = sky;
     this.scene.environmentIntensity = 0.55;
     this.scene.fog = new THREE.Fog(m.fog, 40, 220);
+
+    // sky dome (gradient shader — reliable across GPUs)
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: {
+        top: { value: new THREE.Color(m.sky[0]) },
+        bottom: { value: new THREE.Color(m.sky[1]) },
+      },
+      vertexShader: `
+        varying vec3 vWorld;
+        void main() {
+          vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 top;
+        uniform vec3 bottom;
+        varying vec3 vWorld;
+        void main() {
+          float h = clamp(normalize(vWorld).y * 1.6 + 0.15, 0.0, 1.0);
+          vec3 c = mix(bottom, top, pow(h, 0.65));
+          gl_FragColor = vec4(c, 1.0);
+        }
+      `,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(360, 32, 20), skyMat);
+    dome.renderOrder = -1;
+    this.scene.add(dome);
 
     const hemi = new THREE.HemisphereLight(m.sky[0], m.ground, 1.1);
     this.scene.add(hemi);

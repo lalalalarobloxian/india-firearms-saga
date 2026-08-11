@@ -19,6 +19,14 @@
  */
 
 @theme inline {
+  --font-display: "Marcellus", ui-serif, Georgia, serif;
+  --font-hud: "Rajdhani", ui-sans-serif, system-ui, sans-serif;
+  --color-hud-panel: var(--hud-panel);
+  --color-hud-line: var(--hud-line);
+  --color-vital: var(--vital);
+  --color-armor: var(--armor);
+  --color-crosshair: var(--crosshair);
+  --color-hitmarker: var(--hitmarker);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -62,26 +70,34 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  --radius: 0.5rem;
+  /* Deep ink-and-sandstone war room palette */
+  --background: oklch(0.16 0.024 60);
+  --foreground: oklch(0.95 0.015 85);
+  --card: oklch(0.21 0.028 62);
+  --card-foreground: oklch(0.95 0.015 85);
+  --popover: oklch(0.21 0.028 62);
+  --popover-foreground: oklch(0.95 0.015 85);
+  --primary: oklch(0.78 0.16 68);
+  --primary-foreground: oklch(0.18 0.03 60);
+  --secondary: oklch(0.28 0.032 60);
+  --secondary-foreground: oklch(0.95 0.015 85);
+  --muted: oklch(0.27 0.026 60);
+  --muted-foreground: oklch(0.72 0.03 78);
+  --accent: oklch(0.52 0.12 30);
+  --accent-foreground: oklch(0.97 0.01 85);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(0.97 0.01 85);
+  --border: oklch(0.32 0.03 62);
+  --input: oklch(0.32 0.03 62);
+  --ring: oklch(0.78 0.16 68);
+  --hud-panel: oklch(0.18 0.024 60 / 72%);
+  --hud-line: oklch(0.4 0.035 62 / 55%);
+  --vital: oklch(0.72 0.16 145);
+  --armor: oklch(0.7 0.12 235);
+  --crosshair: oklch(0.96 0.02 130);
+  --hitmarker: oklch(0.98 0.02 90);
+  --blood: oklch(0.35 0.19 25);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -95,6 +111,23 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+}
+
+.bg-menu {
+  background:
+    radial-gradient(120% 80% at 50% -10%, oklch(0.3 0.08 60 / 65%), transparent 60%),
+    radial-gradient(90% 60% at 85% 110%, oklch(0.32 0.1 30 / 55%), transparent 65%),
+    linear-gradient(180deg, oklch(0.14 0.02 60), oklch(0.11 0.015 60));
+}
+
+.bg-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 3px, oklch(0.9 0 0 / 40%) 3px 4px);
 }
 
 .dark {
@@ -140,5 +173,13 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-hud);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  .font-display {
+    font-family: var(--font-display);
   }
 }

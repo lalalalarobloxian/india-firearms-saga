@@ -165,7 +165,6 @@ export class Game {
     this.buildViewModel();
     this.bind();
     this.nextWave();
-    (window as unknown as Record<string, unknown>)["__astra"] = this;
     this.loop();
   }
 
@@ -432,7 +431,8 @@ export class Game {
       if (o instanceof THREE.Mesh) o.castShadow = false;
     });
     g.renderOrder = 10;
-    g.scale.setScalar(0.66);
+    g.scale.setScalar(0.5);
+    g.rotation.y = 0.02;
     this.viewModel.add(g);
     this.muzzle.position.set(0, 0.03, -w.length * 0.9);
     g.add(this.muzzle);
@@ -440,7 +440,7 @@ export class Game {
   }
 
   private hipPos() {
-    return new THREE.Vector3(0.2, -0.17, -0.48);
+    return new THREE.Vector3(0.17, -0.15, -0.5);
   }
 
   /* ------------------------------- input -------------------------------- */

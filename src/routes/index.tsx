@@ -1,24 +1,44 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { ClientOnly } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+const FpsGame = lazy(() => import("@/components/game/FpsGame"));
+
+const title = "Astra·Shastra — FPS Shooter Through Indian Military History";
+const description =
+  "A CS2-style first-person shooter set across Indian history: fight with Mughal matchlocks, Lee–Enfield rifles, INSAS and the AK-203 across fort ramparts and glacier outposts.";
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title },
+      { name: "description", content: description },
+      { property: "og:title", content: title },
+      { property: "og:description", content: description },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+function Loading() {
+  return (
+    <div className="flex h-[100svh] items-center justify-center bg-background">
+      <span className="font-display text-lg tracking-[0.4em] text-primary">LOADING ARMOURY…</span>
+    </div>
+  );
+}
+
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
+    <main>
+      <h1 className="sr-only">Astra·Shastra — first-person shooter through the history of Indian arms</h1>
+      <ClientOnly fallback={<Loading />}>
+        <Suspense fallback={<Loading />}>
+          <FpsGame />
+        </Suspense>
+      </ClientOnly>
+    </main>
   );
 }

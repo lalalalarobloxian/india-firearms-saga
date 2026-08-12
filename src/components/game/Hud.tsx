@@ -1,167 +1,158 @@
-import { useEffect, useState } from "react";
-import type { HudState } from "@/game/engine";
-import { WEAPONS } from "@/game/weapons";
+import { ROUND_SHOP, type HudState } from "@/game/engine";
 
-function useFlash(at: number, ms: number) {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (!at) return;
-    setOn(true);
-    const t = setTimeout(() => setOn(false), ms);
-    return () => clearTimeout(t);
-  }, [at, ms]);
-  return on;
-}
-
-export function Hud({ hud }: { hud: HudState }) {
-  const hit = useFlash(hud.hitAt, 140);
-  const kill = useFlash(hud.killAt, 220);
-  const hurt = useFlash(hud.hurtAt, 260);
-  const w = WEAPONS[hud.weaponIndex]!;
-  const spread = hud.ads ? 3 : 9;
+export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
+  const bar = (v: number, max: number, cls: string) => (
+    <div className="h-1.5 w-32 overflow-hidden rounded bg-hud-line/60">
+      <div className={`h-full ${cls}`} style={{ width: `${Math.max(0, Math.min(100, (v / max) * 100))}%` }} />
+    </div>
+  );
 
   return (
-    <div className="pointer-events-none absolute inset-0 select-none font-hud">
+    <div className="pointer-events-none absolute inset-0 select-none">
       {/* damage vignette */}
       <div
-        className="absolute inset-0 transition-opacity duration-200"
-        style={{
-          opacity: hurt ? 1 : Math.max(0, (60 - hud.health) / 90),
-          background:
-            "radial-gradient(circle at center, transparent 42%, color-mix(in oklab, var(--blood) 70%, transparent) 130%)",
-        }}
+        className="absolute inset-0 transition-opacity"
+        style={{ boxShadow: "inset 0 0 140px 40px hsl(0 80% 35% / 0.9)", opacity: hud.lowHealth }}
       />
 
-      {/* crosshair */}
-      {!hud.dead && (
+      {/* crosshair / scope */}
+      {hud.scoped ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-background">
+          <div className="relative h-[86vh] w-[86vh] rounded-full border-2 border-hud-line bg-transparent shadow-[0_0_0_100vmax_hsl(0_0%_0%/0.95)]">
+            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-foreground/70" />
+            <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-foreground/70" />
+          </div>
+        </div>
+      ) : (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          {hud.ads && w.scoped ? (
-            <div className="relative h-[74vh] w-[74vh] rounded-full border-2 border-black/80 shadow-[0_0_0_100vmax_rgba(0,0,0,0.92)]">
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-black/70" />
-              <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-black/70" />
-              <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/80" />
-            </div>
-          ) : (
-            <div className="relative h-10 w-10">
-              {[
-                ["top-0 left-1/2 -translate-x-1/2 h-2.5 w-[2px]", `translate(-50%, -${spread}px)`],
-                ["bottom-0 left-1/2 -translate-x-1/2 h-2.5 w-[2px]", `translate(-50%, ${spread}px)`],
-                ["left-0 top-1/2 -translate-y-1/2 w-2.5 h-[2px]", `translate(-${spread}px, -50%)`],
-                ["right-0 top-1/2 -translate-y-1/2 w-2.5 h-[2px]", `translate(${spread}px, -50%)`],
-              ].map(([cls, tr], i) => (
-                <span
-                  key={i}
-                  className={`absolute bg-crosshair shadow-[0_0_2px_rgba(0,0,0,0.9)] ${cls}`}
-                  style={{ transform: tr }}
-                />
-              ))}
-              <span className="absolute left-1/2 top-1/2 h-[2px] w-[2px] -translate-x-1/2 -translate-y-1/2 bg-crosshair" />
-              {hit && (
-                <span className="absolute inset-0 flex items-center justify-center text-hitmarker">
-                  <svg width="26" height="26" viewBox="0 0 26 26">
-                    <path d="M4 4l6 6M22 4l-6 6M4 22l6-6M22 22l-6-6" stroke="currentColor" strokeWidth="2.4" />
-                  </svg>
-                </span>
-              )}
+          <div className="relative h-6 w-6">
+            <span className="absolute left-1/2 top-0 h-2 w-[2px] -translate-x-1/2 bg-primary" />
+            <span className="absolute left-1/2 bottom-0 h-2 w-[2px] -translate-x-1/2 bg-primary" />
+            <span className="absolute top-1/2 left-0 h-[2px] w-2 -translate-y-1/2 bg-primary" />
+            <span className="absolute top-1/2 right-0 h-[2px] w-2 -translate-y-1/2 bg-primary" />
+          </div>
+          {hud.hitmark > 0 && (
+            <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-45">
+              <span className="absolute left-1/2 top-0 h-full w-[2px] bg-destructive" />
+              <span className="absolute top-1/2 left-0 h-[2px] w-full bg-destructive" />
             </div>
           )}
         </div>
       )}
 
       {/* top bar */}
-      <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5">
-        <div className="rounded-md border border-hud-line bg-hud-panel px-4 py-2 backdrop-blur-sm">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Wave</div>
-          <div className="text-3xl font-bold leading-none text-primary">{hud.wave}</div>
+      <div className="absolute inset-x-0 top-0 flex items-start justify-between px-6 py-4 text-xs uppercase tracking-[0.28em] text-muted-foreground">
+        <div className="rounded border border-hud-line bg-hud-panel px-4 py-2">
+          <div className="text-primary">{hud.mission}</div>
+          <div className="mt-1 text-[10px] normal-case tracking-normal">{hud.objective}</div>
         </div>
-        <div className="flex flex-col items-center gap-1">
-          <div className="rounded-md border border-hud-line bg-hud-panel px-5 py-1.5 text-center backdrop-blur-sm">
-            <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Hostiles </span>
-            <span className="text-lg font-bold text-destructive">{hud.enemiesLeft}</span>
+        <div className="text-center">
+          <div className="font-display text-2xl tracking-[0.2em] text-foreground">
+            WAVE {hud.wave}
+            {hud.waveTotal ? ` / ${hud.waveTotal}` : ""}
           </div>
-          {kill && <div className="text-xs uppercase tracking-[0.25em] text-primary">Eliminated</div>}
+          <div className="mt-1">{hud.enemies} hostiles · {hud.kills} down</div>
+          {hud.buyPhase && <div className="mt-1 text-primary">Buy phase {hud.buyTime}s · press B</div>}
         </div>
-        <div className="rounded-md border border-hud-line bg-hud-panel px-4 py-2 text-right backdrop-blur-sm">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Score</div>
-          <div className="text-3xl font-bold leading-none text-foreground">{hud.score}</div>
+        <div className="rounded border border-hud-line bg-hud-panel px-4 py-2 text-right">
+          <div className="font-display text-lg text-primary">₹{hud.cash}</div>
+          <div className="mt-1 text-[10px]">Score {hud.score}</div>
+          {hud.showFps && <div className="text-[10px]">{hud.fps} fps</div>}
         </div>
       </div>
 
-      {/* kill feed */}
-      <div className="absolute right-5 top-24 flex w-64 flex-col gap-1 text-right">
-        {hud.feed.map((f) => (
+      {/* squad */}
+      <div className="absolute left-6 top-1/3 space-y-1 text-[11px] uppercase tracking-[0.2em]">
+        {hud.teammates.map((t) => (
           <div
-            key={f.id}
-            className="rounded border border-hud-line bg-hud-panel px-3 py-1 text-xs tracking-wide text-foreground/90"
+            key={t.name + t.character}
+            className={`flex items-center gap-2 rounded border border-hud-line bg-hud-panel px-3 py-1 ${
+              t.down ? "opacity-40" : ""
+            }`}
           >
-            {f.head && <span className="mr-1 text-primary">HEADSHOT</span>}
-            {f.text}
+            <span className={t.self ? "text-primary" : "text-foreground"}>{t.name}</span>
+            {bar(t.hp, 100, "bg-primary")}
+            <span className="text-muted-foreground">{t.kills}</span>
           </div>
         ))}
       </div>
 
-      {/* wave banner */}
-      {hud.waveBanner && (
+      {/* kill feed */}
+      <div className="absolute right-6 top-24 space-y-1 text-right text-[11px] uppercase tracking-[0.2em]">
+        {hud.killfeed.map((k) => (
+          <div key={k.id} className={k.head ? "text-primary" : "text-muted-foreground"}>
+            {k.text}
+            {k.head ? " ⌖" : ""}
+          </div>
+        ))}
+      </div>
+
+      {/* banner */}
+      {hud.banner && (
         <div className="absolute inset-x-0 top-1/4 text-center">
-          <div className="font-display text-6xl tracking-[0.2em] text-primary drop-shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
-            {hud.waveBanner}
-          </div>
-          <div className="mt-2 text-xs uppercase tracking-[0.45em] text-muted-foreground">
-            Hold the fort
-          </div>
+          <span className="font-display text-4xl tracking-[0.24em] text-primary drop-shadow">{hud.banner}</span>
         </div>
       )}
 
-      {/* bottom-left vitals */}
-      <div className="absolute bottom-6 left-6 w-72">
-        <div className="mb-1 flex items-end justify-between">
-          <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Vitals</span>
-          <span className="text-3xl font-bold leading-none text-foreground">{hud.health}</span>
+      {/* bottom bar */}
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between px-6 py-5">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
+            <span>HP</span>
+            {bar(hud.hp, 100, "bg-primary")}
+            <span className="font-display text-xl text-foreground">{hud.hp}</span>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
+            <span>ARM</span>
+            {bar(hud.armor, 100, "bg-accent")}
+            <span className="font-display text-xl text-foreground">{hud.armor}</span>
+          </div>
+          <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">{hud.character}</div>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-hud-line">
-          <div
-            className="h-full rounded-full bg-vital transition-[width] duration-200"
-            style={{ width: `${hud.health}%` }}
-          />
-        </div>
-        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-hud-line">
-          <div
-            className="h-full rounded-full bg-armor transition-[width] duration-200"
-            style={{ width: `${hud.armor}%` }}
-          />
+
+        <div className="flex items-end gap-4">
+          <div className="space-y-1 text-right text-[10px] uppercase tracking-[0.25em]">
+            {hud.slots.map((s, i) => (
+              <div key={s.id} className={s.active ? "text-primary" : "text-muted-foreground/70"}>
+                {i + 1} · {s.name} {s.grenade ? `×${s.ammo}` : s.melee && s.reserve === 0 ? "" : `${s.ammo}`}
+              </div>
+            ))}
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-primary">{hud.weaponEra}</div>
+            <div className="font-display text-xl tracking-[0.1em] text-foreground">{hud.weapon}</div>
+            <div className="font-display text-4xl text-foreground">
+              {hud.ammo}
+              <span className="text-lg text-muted-foreground"> / {hud.reserve}</span>
+            </div>
+            {hud.reloading && <div className="text-[11px] uppercase tracking-[0.3em] text-primary">Reloading…</div>}
+          </div>
         </div>
       </div>
 
-      {/* bottom-right weapon */}
-      <div className="absolute bottom-6 right-6 text-right">
-        <div className="font-display text-lg tracking-wide text-foreground">{hud.weapon}</div>
-        <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-          {hud.caliber} · {w.era}
-        </div>
-        <div className="mt-1 flex items-end justify-end gap-2">
-          <span className={`text-5xl font-bold leading-none ${hud.mag === 0 ? "text-destructive" : "text-foreground"}`}>
-            {hud.mag}
-          </span>
-          <span className="pb-1 text-xl text-muted-foreground">/ {hud.reserve}</span>
-        </div>
-        {hud.reloading && (
-          <div className="mt-1 text-xs uppercase tracking-[0.3em] text-primary">Reloading…</div>
-        )}
-        <div className="mt-3 flex justify-end gap-1">
-          {WEAPONS.map((weapon, i) => (
-            <span
-              key={weapon.id}
-              className={`rounded border px-2 py-1 text-[10px] tracking-widest ${
-                i === hud.weaponIndex
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-hud-line bg-hud-panel text-muted-foreground"
-              }`}
-            >
-              {i + 1}
-            </span>
-          ))}
-        </div>
-      </div>
+      {/* buy menu */}
+      {hud.buyPhase && (
+        <BuyMenu hud={hud} onBuy={onBuy} />
+      )}
+    </div>
+  );
+}
+
+function BuyMenu({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
+  return (
+    <div className="pointer-events-auto absolute bottom-28 left-1/2 hidden -translate-x-1/2 gap-2 md:flex" data-buy>
+      {ROUND_SHOP.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => onBuy(item.id)}
+          disabled={hud.cash < item.price}
+          className="w-32 rounded border border-hud-line bg-hud-panel px-3 py-2 text-left transition hover:border-primary disabled:opacity-35"
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-foreground">{item.label}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{item.detail}</div>
+          <div className="mt-1 text-[11px] text-primary">₹{item.price}</div>
+        </button>
+      ))}
     </div>
   );
 }

@@ -90,11 +90,12 @@ const VERTEX_SHADER = `
 `;
 
 export class PostProcessing {
-  private composer: THREE.EffectComposer;
-  private renderPass: THREE.RenderPass;
-  private bloomPass: THREE.ShaderPass;
+  private composer: EffectComposer;
+  private renderPass: RenderPass;
+  private bloomPass: ShaderPass;
   private enabled = true;
   private bloomEnabled = true;
+  private renderer: THREE.WebGLRenderer;
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -103,13 +104,14 @@ export class PostProcessing {
     width: number,
     height: number,
   ) {
-    this.composer = new THREE.EffectComposer(renderer);
+    this.renderer = renderer;
+    this.composer = new EffectComposer(renderer);
     this.composer.setSize(width, height);
 
-    this.renderPass = new THREE.RenderPass(scene, camera);
+    this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
 
-    this.bloomPass = new THREE.ShaderPass({
+    this.bloomPass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
         resolution: { value: new THREE.Vector2(width, height) },
@@ -139,17 +141,17 @@ export class PostProcessing {
     this.bloomEnabled = settings.bloom;
     const quality = settings.graphics;
     const pixelRatio = quality === "ultra" ? 2 : quality === "high" ? 1.5 : quality === "medium" ? 1 : 0.75;
-    this.composer.setPixelRatio(pixelRatio);
+    this.composer.setPixelRatio(Math.min(pixelRatio, window.devicePixelRatio * 1.5));
     (this.bloomPass.uniforms["bloomStrength"]!.value as number) = settings.bloom ? 0.65 : 0;
     (this.bloomPass.uniforms["vignette"]!.value as number) = 0.85;
     (this.bloomPass.uniforms["aberration"]!.value as number) = quality === "low" ? 0 : 1.0;
   }
 
   render() {
-    if (this.enabled) {
+    if (this.enabled || this.bloomEnabled) {
       this.composer.render();
     } else {
-      this.renderPass.render();
+      this.renderer.render(this.renderPass.scene, this.renderPass.camera);
     }
   }
 
@@ -381,10 +383,10 @@ export function updateShaderMeshes(scene: THREE.Scene, time: number, dt: number)
       const pos = attr.array as Float32Array;
       const vel = velAttr.array as Float32Array;
       for (let i = 0; i < pos.length; i += 3) {
-        pos[i] += vel[i] * dt;
-        pos[i + 1] += vel[i + 1] * dt;
-        pos[i + 2] += vel[i + 2] * dt;
-        if (pos[i + 1] < 0) {
+        pos[i] = (pos[i] ?? 0) + (vel[i] ?? 0) * dt;
+        pos[i + 1] = (pos[i + 1] ?? 0) + (vel[i + 1] ?? 0) * dt;
+        pos[i + 2] = (pos[i + 2] ?? 0) + (vel[i + 2] ?? 0) * dt;
+        if ((pos[i + 1] ?? 0) < 0) {
           pos[i] = (Math.random() - 0.5) * bounds;
           pos[i + 1] = bounds * 0.7;
           pos[i + 2] = (Math.random() - 0.5) * bounds;

@@ -1,11 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-export const supabase = createClient(url, anonKey, {
-  auth: { persistSession: false },
-});
+export { supabase };
 
 export interface PlayerProfile {
   currency: number;
@@ -76,7 +71,7 @@ export async function getProfile(): Promise<PlayerProfile> {
     best_score: data.best_score,
     best_wave: data.best_wave,
     games_played: data.games_played,
-    settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
+    settings: { ...DEFAULT_SETTINGS, ...((data.settings ?? {}) as Partial<GameSettings>) },
   };
 }
 
@@ -91,16 +86,18 @@ const DEFAULT_PROFILE: PlayerProfile = {
 };
 
 export async function saveProfile(updates: Partial<PlayerProfile>): Promise<void> {
-  const payload: Record<string, unknown> = {
+  const payload = {
     updated_at: new Date().toISOString(),
+    ...(updates.currency !== undefined ? { currency: updates.currency } : {}),
+    ...(updates.total_kills !== undefined ? { total_kills: updates.total_kills } : {}),
+    ...(updates.total_waves !== undefined ? { total_waves: updates.total_waves } : {}),
+    ...(updates.best_score !== undefined ? { best_score: updates.best_score } : {}),
+    ...(updates.best_wave !== undefined ? { best_wave: updates.best_wave } : {}),
+    ...(updates.games_played !== undefined ? { games_played: updates.games_played } : {}),
+    ...(updates.settings !== undefined
+      ? { settings: updates.settings as unknown as Record<string, never> }
+      : {}),
   };
-  if (updates.currency !== undefined) payload.currency = updates.currency;
-  if (updates.total_kills !== undefined) payload.total_kills = updates.total_kills;
-  if (updates.total_waves !== undefined) payload.total_waves = updates.total_waves;
-  if (updates.best_score !== undefined) payload.best_score = updates.best_score;
-  if (updates.best_wave !== undefined) payload.best_wave = updates.best_wave;
-  if (updates.games_played !== undefined) payload.games_played = updates.games_played;
-  if (updates.settings !== undefined) payload.settings = updates.settings;
 
   const { error } = await supabase.from("player_profile").update(payload).eq("id", 1);
   if (error) console.error("Failed to save profile:", error.message);

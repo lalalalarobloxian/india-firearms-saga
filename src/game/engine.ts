@@ -1211,3 +1211,733 @@ export class Game {
       if (old) this.scene.remove(old);
     }
   }
+
+  /* ---------------- enemies & waves ----------------------------------- */
+
+  private enemyStyleForWave(wave: number) {
+    const t = this.map.theme;
+    const era = t === "snow" ? "modern" : t === "desert" ? "modern" : t === "fort" || t === "temple" ? "historic" : "colonial";
+    if (era === "modern") {
+      return {
+        cloth: 0x4a5340,
+        skin: 0x8a5a3b,
+        accent: 0x2a2f24,
+        head: "helmet" as const,
+        weapon: (wave % 4 === 0 ? "lmg" : "rifle") as "lmg" | "rifle",
+        names: ["Rifleman", "Marksman", "Support Gunner"],
+      };
+    }
+    if (era === "colonial") {
+      return {
+        cloth: 0x8c3a34,
+        skin: 0x8a5a3b,
+        accent: 0xd9c49a,
+        head: "cap" as const,
+        weapon: "rifle" as const,
+        names: ["Sepoy", "Line Infantry", "Skirmisher"],
+      };
+    }
+    return {
+      cloth: 0x3f4a63,
+      skin: 0x8a5a3b,
+      accent: 0xc9a227,
+      head: (Math.random() < 0.5 ? "turban" : "helmet") as "turban" | "helmet",
+      weapon: (Math.random() < 0.35 ? "sword" : "musket") as "sword" | "musket",
+      names: ["Musketeer", "Fort Guard", "Swordsman"],
+    };
+  }
+
+  private spawnEnemy() {
+    const style = this.enemyStyleForWave(this.wave);
+    const melee = style.weapon === "sword";
+    const h = buildHumanoid({
+      cloth: style.cloth,
+      skin: style.skin,
+      accent: style.accent,
+      head: style.head,
+      weapon: style.weapon,
+      scale: rand(0.96, 1.06),
+    });
+    const spawn = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)]!;
+    h.root.position.copy(spawn).add(new THREE.Vector3(rand(-3, 3), 0, rand(-3, 3)));
+    this.scene.add(h.root);
+
+    const hitBody = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.38, 0.9, 4, 8),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    hitBody.position.y = 1.15;
+    h.root.add(hitBody);
+    const hitHead = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    );
+    hitHead.position.y = 1.72;
+    h.root.add(hitHead);
+
+    const diff = this.mission.difficulty;
+    const scale = 1 + (this.wave - 1) * 0.12;
+    const maxHp = (melee ? 130 : 100) * diff * Math.min(scale, 3);
+    this.enemies.push({
+      h,
+      hitBody,
+      hitHead,
+      hp: maxHp,
+      maxHp,
+      speed: (melee ? 4.6 : 3.1) * rand(0.9, 1.15),
+      fireCooldown: rand(0.5, 2.2),
+      burst: 0,
+      damage: (melee ? 22 : 9) * diff,
+      accuracy: clamp(0.34 + this.wave * 0.03, 0.3, 0.78),
+      range: melee ? 2.2 : 60,
+      strafe: Math.random() < 0.5 ? 1 : -1,
+      strafeTimer: rand(0.8, 2.4),
+      dead: false,
+      deathTime: 0,
+      name: style.names[Math.floor(Math.random() * style.names.length)] ?? "Hostile",
+      reward: melee ? 120 : 90,
+      melee,
+    });
+  }
+
+  private damageEnemy(e: Enemy, dmg: number, head: boolean, at: THREE.Vector3) {
+    e.hp -= dmg;
+    for (let i = 0; i < 6; i++) this.spawnParticle(at, 0x8c1c1c, 0.06, rand(2, 5), 0.5, 10);
+    if (e.hp > 0) return;
+    e.dead = true;
+    e.deathTime = this.time;
+    e.h.root.rotation.z = rand(-0.4, 0.4);
+    this.kills += 1;
+    if (head) this.headshots += 1;
+    this.score += head ? 150 : 100;
+    const gain = e.reward * (this.character.ability === "double_currency" ? 1 + this.character.abilityValue : 1);
+    this.cash += Math.round(gain);
+    this.earned += Math.round(gain * 0.4);
+    this.waveEnemiesLeft = Math.max(0, this.waveEnemiesLeft - 1);
+    this.pushFeed(`${this.playerName} ▸ ${e.name}`, head);
+    this.net?.sendEvent({ type: "kill", name: this.playerName, target: e.name, head } as Omit<NetEvent, "from">);
+    this.audio.pickup();
+  }
+
+  private pushFeed(text: string, head: boolean) {
+    this.killfeed = [{ id: ++this.feedId, text, head }, ...this.killfeed].slice(0, 5);
+  }
+
+  private takeDamage(dmg: number) {
+    if (this.dead) return;
+    if (this.armor > 0) {
+      const absorbed = Math.min(this.armor, dmg * 0.6);
+      this.armor -= absorbed;
+      dmg -= absorbed;
+    }
+    this.hp -= dmg;
+    this.lowHealth = 0.5;
+    this.audio.hurt();
+    this.shake = Math.max(this.shake, 0.25);
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.dead = true;
+      this.finishRun();
+      document.exitPointerLock?.();
+      this.net?.sendEvent({ type: "down", name: this.playerName } as Omit<NetEvent, "from">);
+    }
+  }
+
+  private startWave() {
+    this.buyPhase = false;
+    this.buyOpen = false;
+    const count = Math.min(24, 4 + this.wave * 2);
+    this.spawnQueue = count;
+    this.waveEnemiesLeft = count;
+    this.spawnTimer = 0;
+    this.banner = `WAVE ${this.wave} · ${this.mission.faction.toUpperCase()}`;
+    this.bannerUntil = this.time + 2.6;
+    this.audio.wave();
+    this.applyCharacter(false);
+  }
+
+  private endWave() {
+    this.wave += 1;
+    if (this.mode === "mission" && this.wave > this.mission.waves) {
+      this.won = true;
+      this.dead = true;
+      this.earned += this.mission.reward;
+      this.finishRun();
+      document.exitPointerLock?.();
+      return;
+    }
+    this.cash += 300 + this.wave * 60;
+    this.buyPhase = true;
+    this.buyTimer = 15;
+    this.banner = "WAVE CLEARED · PRESS B TO BUY";
+    this.bannerUntil = this.time + 3.4;
+    if (this.net?.isHost) this.net.sendEvent({ type: "wave", wave: this.wave } as Omit<NetEvent, "from">);
+  }
+
+  private finished = false;
+  private finishRun() {
+    if (this.finished) return;
+    this.finished = true;
+    void import("./economy").then(({ recordGameResult }) =>
+      recordGameResult({
+        currencyEarned: this.earned,
+        kills: this.kills,
+        waves: Math.max(0, this.wave - 1),
+        score: this.score,
+      }),
+    );
+  }
+
+  /* ---------------- shop ---------------------------------------------- */
+
+  toggleBuy(open: boolean) {
+    if (!this.buyPhase && open) return;
+    this.buyOpen = open;
+    if (open) document.exitPointerLock?.();
+    else this.lock();
+    this.emitHud(true);
+  }
+
+  buy(itemId: string): boolean {
+    const item = ROUND_SHOP.find((i) => i.id === itemId);
+    if (!item || this.cash < item.price) return false;
+    this.cash -= item.price;
+    if (item.id === "armor") this.armor = Math.min(100, this.armor + 100);
+    if (item.id === "health") this.hp = 100;
+    if (item.id === "ammo") this.reserve = this.weapons.map((w, i) => Math.max(this.reserve[i] ?? 0, w.reserve));
+    if (item.id === "frag" || item.id === "smoke") {
+      const wid = item.id === "frag" ? "grenade36" : "smoke";
+      let idx = this.weapons.findIndex((w) => w.id === wid);
+      if (idx < 0) {
+        const def = ALL_WEAPONS.find((w) => w.id === wid);
+        if (def) {
+          this.weapons.push(def);
+          this.ammo.push(0);
+          this.reserve.push(0);
+          const vm = buildViewModel(def);
+          vm.group.visible = false;
+          this.viewScene.add(vm.group);
+          this.views.push(vm);
+          idx = this.weapons.length - 1;
+        }
+      }
+      if (idx >= 0) this.ammo[idx] = (this.ammo[idx] ?? 0) + 2;
+    }
+    if (item.id === "damage") this.damageBonus += 0.1;
+    this.audio.pickup();
+    this.emitHud(true);
+    return true;
+  }
+
+  /* ---------------- multiplayer --------------------------------------- */
+
+  handleNetEvent(e: NetEvent) {
+    if (e.type === "kill") this.pushFeed(`${e.name} ▸ ${e.target}`, e.head);
+    if (e.type === "down") this.pushFeed(`${e.name} is down`, false);
+    if (e.type === "wave" && !this.net?.isHost && e.wave > this.wave) {
+      this.wave = e.wave;
+      this.buyPhase = true;
+      this.buyTimer = 15;
+    }
+    if (e.type === "grenade") {
+      const def = ALL_WEAPONS.find((w) => w.id === e.kind);
+      if (def)
+        this.spawnGrenade(new THREE.Vector3(e.x, e.y, e.z), new THREE.Vector3(e.vx, e.vy, e.vz), def);
+    }
+  }
+
+  private nameSprite(text: string, color: number) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = `#${new THREE.Color(color).getHexString()}`;
+    ctx.font = "600 30px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(text.slice(0, 14), 128, 42);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false }),
+    );
+    sprite.scale.set(2.6, 0.65, 1);
+    sprite.position.y = 2.3;
+    return sprite;
+  }
+
+  private syncPeers(dt: number) {
+    const net = this.net;
+    if (!net) return;
+    net.sendState({
+      x: this.pos.x,
+      y: this.pos.y - 1.7,
+      z: this.pos.z,
+      yaw: this.yaw,
+      hp: this.hp,
+      armor: this.armor,
+      weapon: this.weapon.name,
+      kills: this.kills,
+      down: this.dead,
+      moving: this.vel.length(),
+      aiming: this.ads,
+    });
+
+    for (const [id, peer] of net.peers) {
+      let avatar = this.avatars.get(id);
+      if (!avatar) {
+        const character = CHARACTERS.find((c) => c.id === peer.character) ?? CHARACTERS[0]!;
+        const h = buildHumanoid({
+          cloth: character.accent,
+          skin: 0x8a5a3b,
+          accent: 0xf1f5f9,
+          head: "pagri",
+          weapon: "rifle",
+        });
+        const label = this.nameSprite(peer.name, 0x8ce99a);
+        h.root.add(label);
+        this.scene.add(h.root);
+        avatar = { h, label, target: new THREE.Vector3(peer.x, peer.y, peer.z) };
+        this.avatars.set(id, avatar);
+      }
+      avatar.target.set(peer.x, peer.y, peer.z);
+      avatar.h.root.position.lerp(avatar.target, clamp(dt * 10, 0, 1));
+      avatar.h.root.rotation.y = peer.yaw + Math.PI;
+      avatar.h.root.visible = !peer.down;
+      animateHumanoid(avatar.h, peer.moving, this.time, peer.aiming);
+      this.peerKills.set(id, peer.kills);
+    }
+    for (const [id, avatar] of this.avatars) {
+      if (!net.peers.has(id)) {
+        this.scene.remove(avatar.h.root);
+        this.avatars.delete(id);
+      }
+    }
+  }
+
+  /* ---------------- simulation ---------------------------------------- */
+
+  private losBlocked(from: THREE.Vector3, to: THREE.Vector3) {
+    for (const s of this.smokes) {
+      const line = to.clone().sub(from);
+      const t = clamp(s.pos.clone().sub(from).dot(line) / line.lengthSq(), 0, 1);
+      const closest = from.clone().add(line.multiplyScalar(t));
+      if (closest.distanceTo(s.pos) < s.radius * 0.7) return true;
+    }
+    const dir = to.clone().sub(from);
+    const dist = dir.length();
+    dir.normalize();
+    this.raycaster.set(from, dir);
+    this.raycaster.far = dist;
+    const hits = this.raycaster.intersectObjects(this.worldGroup.children, true);
+    return hits.length > 0 && (hits[0]?.distance ?? dist) < dist - 0.6;
+  }
+
+  private movePlayer(dt: number) {
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const wish = new THREE.Vector3();
+    if (this.keys.has("keyw")) wish.add(forward);
+    if (this.keys.has("keys")) wish.sub(forward);
+    if (this.keys.has("keya")) wish.sub(right);
+    if (this.keys.has("keyd")) wish.add(right);
+    this.crouching = this.keys.has("controlleft") || this.keys.has("keyc");
+    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(this.moveSpeed());
+
+    const accel = this.onGround ? 14 : 4;
+    this.vel.x += (wish.x - this.vel.x) * Math.min(1, accel * dt);
+    this.vel.z += (wish.z - this.vel.z) * Math.min(1, accel * dt);
+    this.vel.y -= 22 * dt;
+
+    const step = this.vel.clone().multiplyScalar(dt);
+    const radius = 0.4;
+    const eye = this.crouching ? 1.15 : 1.7;
+
+    // axis-separated collision resolution
+    for (const axis of ["x", "z"] as const) {
+      const next = this.pos.clone();
+      next[axis] += step[axis];
+      const feet = next.y - eye;
+      const boxPlayer = new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(next.x, feet + 0.9, next.z),
+        new THREE.Vector3(radius * 2, 1.8, radius * 2),
+      );
+      let blocked = false;
+      for (const c of this.colliders) {
+        if (c.box.intersectsBox(boxPlayer) && c.box.max.y - feet > 0.55) {
+          blocked = true;
+          break;
+        }
+      }
+      if (!blocked) this.pos[axis] = next[axis];
+      else this.vel[axis] = 0;
+    }
+
+    // vertical
+    this.pos.y += step.y;
+    let groundY = 0;
+    const feetBox = new THREE.Box3().setFromCenterAndSize(
+      new THREE.Vector3(this.pos.x, this.pos.y - eye + 0.2, this.pos.z),
+      new THREE.Vector3(radius * 2, 0.5, radius * 2),
+    );
+    for (const c of this.colliders) {
+      if (
+        this.pos.x > c.box.min.x - radius &&
+        this.pos.x < c.box.max.x + radius &&
+        this.pos.z > c.box.min.z - radius &&
+        this.pos.z < c.box.max.z + radius &&
+        c.box.max.y <= this.pos.y - eye + 0.6
+      ) {
+        groundY = Math.max(groundY, c.box.max.y);
+      }
+    }
+    void feetBox;
+    if (this.pos.y - eye <= groundY) {
+      this.pos.y = groundY + eye;
+      this.vel.y = 0;
+      this.onGround = true;
+    } else this.onGround = false;
+
+    const lim = ARENA / 2 - 2.4;
+    this.pos.x = clamp(this.pos.x, -lim, lim);
+    this.pos.z = clamp(this.pos.z, -lim, lim);
+  }
+
+  private updateEnemies(dt: number) {
+    for (const e of this.enemies) {
+      if (e.dead) {
+        e.h.root.position.y = Math.max(0.15, e.h.root.position.y - dt * 2.5);
+        e.h.root.rotation.x = Math.min(Math.PI / 2, e.h.root.rotation.x + dt * 3);
+        continue;
+      }
+      const toPlayer = this.pos.clone().setY(e.h.root.position.y).sub(e.h.root.position);
+      const dist = toPlayer.length();
+      toPlayer.normalize();
+      const sees = !this.dead && dist < e.range && !this.losBlocked(
+        e.h.root.position.clone().setY(1.5),
+        this.pos.clone(),
+      );
+
+      e.strafeTimer -= dt;
+      if (e.strafeTimer <= 0) {
+        e.strafe *= -1;
+        e.strafeTimer = rand(0.9, 2.6);
+      }
+
+      const desired = new THREE.Vector3();
+      const keep = e.melee ? 1.6 : 16;
+      if (dist > keep) desired.add(toPlayer);
+      else if (dist < keep * 0.6) desired.sub(toPlayer);
+      const side = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).multiplyScalar(e.strafe * (sees ? 0.8 : 0.2));
+      desired.add(side);
+      if (desired.lengthSq() > 0) desired.normalize().multiplyScalar(e.speed * dt);
+
+      const next = e.h.root.position.clone().add(desired);
+      const nb = new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(next.x, next.y + 0.9, next.z),
+        new THREE.Vector3(0.8, 1.8, 0.8),
+      );
+      let blocked = false;
+      for (const c of this.colliders) {
+        if (c.box.intersectsBox(nb) && c.box.max.y > next.y + 0.5) {
+          blocked = true;
+          break;
+        }
+      }
+      if (!blocked) e.h.root.position.copy(next);
+      else e.h.root.position.add(side.multiplyScalar(dt * e.speed));
+      e.h.root.position.y = 0;
+
+      e.h.root.rotation.y = Math.atan2(toPlayer.x, toPlayer.z) + Math.PI;
+      animateHumanoid(e.h, desired.length() / Math.max(dt, 0.001), this.time, sees && !e.melee);
+
+      if (!sees) continue;
+      e.fireCooldown -= dt;
+      if (e.fireCooldown <= 0) {
+        if (e.melee) {
+          if (dist < 2.6) {
+            this.takeDamage(e.damage);
+            this.audio.swing();
+            e.fireCooldown = 1.1;
+          } else e.fireCooldown = 0.3;
+        } else {
+          e.fireCooldown = rand(0.9, 2.1);
+          const hitChance = e.accuracy * clamp(1 - dist / 90, 0.3, 1) * (this.crouching ? 0.85 : 1);
+          this.spawnTracer(e.h.root.position.clone().setY(1.4), this.pos.clone().add(new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1))));
+          this.audio.noise(0.12, 0.16, 2400, 3);
+          if (Math.random() < hitChance) this.takeDamage(e.damage);
+        }
+      }
+    }
+    this.enemies = this.enemies.filter((e) => {
+      if (e.dead && this.time - e.deathTime > 8) {
+        this.scene.remove(e.h.root);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private updateProjectiles(dt: number) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i]!;
+      p.vel.y -= 20 * dt;
+      p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+      p.mesh.rotation.x += dt * 6;
+      if (p.mesh.position.y < 0.08) {
+        p.mesh.position.y = 0.08;
+        p.vel.y *= -0.35;
+        p.vel.x *= 0.6;
+        p.vel.z *= 0.6;
+      }
+      p.fuse -= dt;
+      if (p.fuse <= 0) {
+        this.explode(p.mesh.position.clone(), p.weapon);
+        this.scene.remove(p.mesh);
+        this.projectiles.splice(i, 1);
+      }
+    }
+    for (let i = this.smokes.length - 1; i >= 0; i--) {
+      const s = this.smokes[i]!;
+      s.life -= dt;
+      const mat = s.points.material as THREE.PointsMaterial;
+      mat.opacity = clamp(s.life / 4, 0, 0.55);
+      if (s.life <= 0) {
+        this.scene.remove(s.points);
+        this.smokes.splice(i, 1);
+      }
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]!;
+      p.life -= dt;
+      p.vel.y -= p.gravity * dt;
+      p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+      p.mesh.rotation.x += p.spin * dt;
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = clamp(p.life, 0, 1);
+      if (p.life <= 0) {
+        this.scene.remove(p.mesh);
+        this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  private updateViewModel(dt: number) {
+    const vm = this.view;
+    if (!vm) return;
+    const w = this.weapon;
+    const sway = this.vel.length() * 0.006;
+    const bob = Math.sin(this.time * 9) * sway;
+    const targetPos = this.ads
+      ? new THREE.Vector3(0, w.scoped ? -0.135 : -0.075, -0.16)
+      : new THREE.Vector3(0.19, -0.19, -0.3);
+    if (this.meleeSwing > 0) {
+      this.meleeSwing -= dt;
+      targetPos.x -= Math.sin(this.meleeSwing * 12) * 0.35;
+      targetPos.y += Math.sin(this.meleeSwing * 9) * 0.2;
+    }
+    if (this.throwCharge > 0) targetPos.z += 0.16 * this.throwCharge;
+    vm.group.position.lerp(targetPos.add(new THREE.Vector3(bob, bob * 0.5, 0)), clamp(dt * 12, 0, 1));
+    const targetRot = new THREE.Euler(
+      this.recoilPitch * 3 + (this.reloading ? 0.5 : 0) + (this.throwCharge > 0 ? -0.6 * this.throwCharge : 0),
+      this.ads ? 0 : -0.06 + this.recoilYaw,
+      this.reloading ? 0.45 : this.meleeSwing > 0 ? -0.8 : 0,
+    );
+    vm.group.rotation.x += (targetRot.x - vm.group.rotation.x) * clamp(dt * 10, 0, 1);
+    vm.group.rotation.y += (targetRot.y - vm.group.rotation.y) * clamp(dt * 10, 0, 1);
+    vm.group.rotation.z += (targetRot.z - vm.group.rotation.z) * clamp(dt * 10, 0, 1);
+    if (vm.bolt) {
+      this.boltCycle = Math.max(0, this.boltCycle - dt);
+      vm.bolt.position.z = -w.length * 0.2 + this.boltCycle * 0.35;
+    }
+  }
+
+  /* ---------------- HUD ----------------------------------------------- */
+
+  private emitHud(force = false) {
+    if (!force && this.time - this.hudTime < 0.08) return;
+    this.hudTime = this.time;
+    const w = this.weapon;
+    const teammates: HudTeammate[] = [
+      {
+        name: this.playerName,
+        character: this.character.name,
+        hp: this.hp,
+        kills: this.kills,
+        down: this.dead,
+        self: true,
+      },
+    ];
+    if (this.net) {
+      for (const [, p] of this.net.peers) {
+        teammates.push({ name: p.name, character: p.character, hp: p.hp, kills: p.kills, down: p.down, self: false });
+      }
+    }
+    this.onHud({
+      hp: Math.round(this.hp),
+      armor: Math.round(this.armor),
+      ammo: this.ammo[this.wIndex] ?? 0,
+      reserve: this.reserve[this.wIndex] ?? 0,
+      weapon: w.name,
+      weaponEra: w.era,
+      slots: this.weapons.map((wp, i) => ({
+        id: wp.id,
+        name: wp.name,
+        ammo: this.ammo[i] ?? 0,
+        reserve: this.reserve[i] ?? 0,
+        grenade: wp.category === "grenade",
+        melee: wp.category === "melee",
+        active: i === this.wIndex,
+      })),
+      wave: this.wave,
+      waveTotal: this.mode === "mission" ? this.mission.waves : 0,
+      enemies: this.enemies.filter((e) => !e.dead).length + this.spawnQueue,
+      kills: this.kills,
+      headshots: this.headshots,
+      accuracy: this.shotsFired ? Math.round((this.shotsHit / this.shotsFired) * 100) : 0,
+      score: this.score,
+      cash: Math.round(this.cash),
+      earned: Math.round(this.earned),
+      dead: this.dead && !this.won,
+      won: this.won,
+      reloading: this.reloading,
+      hitmark: this.hitmark,
+      killfeed: this.killfeed,
+      banner: this.bannerUntil > this.time ? this.banner : null,
+      objective: this.mission.objective,
+      mission: this.mission.name,
+      character: this.character.name,
+      buyPhase: this.buyPhase,
+      buyTime: Math.max(0, Math.ceil(this.buyTimer)),
+      teammates,
+      fps: this.fps,
+      showFps: this.settings.showFps,
+      zoom: this.ads ? w.zoom : 1,
+      scoped: !!w.scoped && this.ads,
+      lowHealth: this.lowHealth,
+    });
+  }
+
+  /* ---------------- loop ---------------------------------------------- */
+
+  private animate = () => {
+    if (this.disposed) return;
+    requestAnimationFrame(this.animate);
+    const dt = Math.min(0.05, this.clock.getDelta());
+    this.time += dt;
+    this.frames += 1;
+    this.fpsTime += dt;
+    if (this.fpsTime >= 0.5) {
+      this.fps = Math.round(this.frames / this.fpsTime);
+      this.frames = 0;
+      this.fpsTime = 0;
+    }
+
+    if (!this.mouseDown) this.mouseHeldSince = false;
+    this.hitmark = Math.max(0, this.hitmark - dt);
+    this.lowHealth = Math.max(0, this.lowHealth - dt * 0.8);
+    this.shake = Math.max(0, this.shake - dt * 2);
+    this.recoilPitch *= 1 - Math.min(1, dt * 7);
+    this.recoilYaw *= 1 - Math.min(1, dt * 7);
+    this.muzzleLight.intensity *= 1 - Math.min(1, dt * 14);
+
+    if (!this.dead && !this.buyOpen) {
+      this.movePlayer(dt);
+      if (this.mouseDown) this.tryFire();
+      if (this.reloading && this.time >= this.reloadEnd) this.finishReload();
+      if (this.character.ability === "health_regen" && this.hp < 80) {
+        this.hp = Math.min(80, this.hp + this.character.abilityValue * dt);
+      }
+    }
+
+    // wave state machine
+    if (!this.dead) {
+      if (this.buyPhase) {
+        this.buyTimer -= dt;
+        if (this.buyTimer <= 0) this.startWave();
+      } else {
+        if (this.spawnQueue > 0) {
+          this.spawnTimer -= dt;
+          if (this.spawnTimer <= 0 && this.enemies.filter((e) => !e.dead).length < 14) {
+            this.spawnEnemy();
+            this.spawnQueue -= 1;
+            this.spawnTimer = rand(0.5, 1.4);
+          }
+        } else if (this.enemies.every((e) => e.dead)) {
+          this.endWave();
+        }
+      }
+    }
+
+    this.updateEnemies(dt);
+    this.updateProjectiles(dt);
+    this.updateViewModel(dt);
+    this.syncPeers(dt);
+    updateShaderMeshes(this.scene, this.time, dt);
+
+    // camera
+    const shake = this.shake;
+    this.camera.position.copy(this.pos).add(
+      new THREE.Vector3(rand(-shake, shake) * 0.3, rand(-shake, shake) * 0.3, 0),
+    );
+    this.camera.rotation.set(this.pitch + this.recoilPitch, this.yaw + this.recoilYaw, 0, "YXZ");
+    const targetFov = this.settings.fov / (this.ads ? this.weapon.zoom : 1);
+    this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.clear();
+    if (this.post) {
+      this.post.setScene(this.scene, this.camera);
+      this.post.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+    this.renderer.clearDepth();
+    if (!(this.weapon.scoped && this.ads)) this.renderer.render(this.viewScene, this.viewCamera);
+
+    this.emitHud();
+  };
+
+  /* ---------------- lifecycle ----------------------------------------- */
+
+  restart() {
+    this.enemies.forEach((e) => this.scene.remove(e.h.root));
+    this.enemies = [];
+    this.projectiles.forEach((p) => this.scene.remove(p.mesh));
+    this.projectiles = [];
+    this.smokes.forEach((s) => this.scene.remove(s.points));
+    this.smokes = [];
+    this.hp = 100;
+    this.armor = 0;
+    this.dead = false;
+    this.won = false;
+    this.finished = false;
+    this.wave = 1;
+    this.kills = 0;
+    this.headshots = 0;
+    this.shotsFired = 0;
+    this.shotsHit = 0;
+    this.score = 0;
+    this.cash = 800;
+    this.earned = 0;
+    this.killfeed = [];
+    this.buyPhase = true;
+    this.buyTimer = 8;
+    this.initLoadout();
+    this.pos.set(0, 1.7, 18);
+    this.vel.set(0, 0, 0);
+  }
+
+  dispose() {
+    this.disposed = true;
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("mousedown", this.onMouseDown);
+    window.removeEventListener("mouseup", this.onMouseUp);
+    window.removeEventListener("mousemove", this.onMouseMove);
+    window.removeEventListener("wheel", this.onWheel);
+    window.removeEventListener("resize", this.onResize);
+    document.exitPointerLock?.();
+    this.post?.dispose();
+    this.renderer.dispose();
+    if (this.renderer.domElement.parentElement === this.container) {
+      this.container.removeChild(this.renderer.domElement);
+    }
+  }
+}

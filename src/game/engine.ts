@@ -833,3 +833,381 @@ export class Game {
     if (this.weapon.category === "melee") s *= 1.15;
     return s;
   }
+
+  /* ---------------- input -------------------------------------------- */
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    const code = e.code.toLowerCase();
+    this.keys.add(code);
+    if (code === "keyb") {
+      if (this.buyPhase) this.toggleBuy(!this.buyOpen);
+      e.preventDefault();
+      return;
+    }
+    if (this.buyOpen) return;
+    if (code.startsWith("digit")) {
+      const n = Number(code.slice(5)) - 1;
+      if (n >= 0 && n < this.weapons.length) this.selectWeapon(n);
+    }
+    if (code === "keyr") this.startReload();
+    if (code === "keyg") {
+      const gi = this.weapons.findIndex((w) => w.category === "grenade");
+      if (gi >= 0) this.selectWeapon(gi);
+    }
+    if (code === "keyv") {
+      const mi = this.weapons.findIndex((w) => w.category === "melee");
+      if (mi >= 0) this.selectWeapon(mi);
+    }
+    if (code === "space" && this.onGround && !this.dead) {
+      this.vel.y = 7.4;
+      this.onGround = false;
+    }
+  };
+
+  private onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code.toLowerCase());
+
+  private onMouseDown = (e: MouseEvent) => {
+    if (this.buyOpen) return;
+    if (e.button === 0) this.mouseDown = true;
+    if (e.button === 2) {
+      this.rightDown = true;
+      if (this.weapon.category !== "grenade") this.ads = true;
+    }
+  };
+
+  private onMouseUp = (e: MouseEvent) => {
+    if (e.button === 0) {
+      this.mouseDown = false;
+      if (this.weapon.category === "grenade" && this.throwCharge > 0) this.throwGrenade();
+    }
+    if (e.button === 2) {
+      this.rightDown = false;
+      this.ads = false;
+    }
+  };
+
+  private onMouseMove = (e: MouseEvent) => {
+    if (document.pointerLockElement !== this.renderer.domElement) return;
+    const sens = 0.0022 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.weapon.zoom) : 1);
+    this.yaw -= e.movementX * sens;
+    this.pitch = clamp(this.pitch - e.movementY * sens, -1.5, 1.5);
+  };
+
+  private onWheel = (e: WheelEvent) => {
+    if (this.buyOpen) return;
+    const dir = e.deltaY > 0 ? 1 : -1;
+    this.selectWeapon((this.wIndex + dir + this.weapons.length) % this.weapons.length);
+  };
+
+  private onResize = () => {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.renderer.setSize(w, h);
+    this.camera.aspect = w / Math.max(1, h);
+    this.camera.updateProjectionMatrix();
+    this.viewCamera.aspect = this.camera.aspect;
+    this.viewCamera.updateProjectionMatrix();
+    this.post?.setSize(w, h);
+  };
+
+  private attachInput() {
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("mousedown", this.onMouseDown);
+    window.addEventListener("mouseup", this.onMouseUp);
+    window.addEventListener("mousemove", this.onMouseMove);
+    window.addEventListener("wheel", this.onWheel, { passive: true });
+    window.addEventListener("resize", this.onResize);
+    this.renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  lock() {
+    void this.renderer.domElement.requestPointerLock?.();
+  }
+
+  private selectWeapon(i: number) {
+    if (i === this.wIndex || this.dead) return;
+    this.wIndex = i;
+    this.reloading = false;
+    this.ads = false;
+    this.throwCharge = 0;
+    this.updateViewVisibility();
+    this.audio.noise(0.07, 0.14, 2600, 2);
+  }
+
+  /* ---------------- shooting ----------------------------------------- */
+
+  private startReload() {
+    const w = this.weapon;
+    if (w.category === "grenade" || w.id === "khanda") return;
+    if (this.reloading || this.ammo[this.wIndex]! >= w.magSize || this.reserve[this.wIndex]! <= 0) return;
+    this.reloading = true;
+    const speed = this.character.ability === "fast_reload" ? 1 - this.character.abilityValue : 1;
+    this.reloadEnd = this.time + w.reloadTime * speed;
+    this.audio.reload();
+  }
+
+  private finishReload() {
+    const w = this.weapon;
+    const need = w.magSize - this.ammo[this.wIndex]!;
+    const take = Math.min(need, this.reserve[this.wIndex]!);
+    this.ammo[this.wIndex]! += take;
+    this.reserve[this.wIndex]! -= take;
+    this.reloading = false;
+  }
+
+  private damageMultiplier() {
+    return 1 + this.damageBonus;
+  }
+
+  private tryFire() {
+    const w = this.weapon;
+    if (this.dead || this.reloading || this.buyOpen) return;
+    const interval = 60 / w.rpm;
+    if (this.time - this.lastShot < interval) return;
+
+    if (w.category === "grenade") {
+      if (this.mouseDown) this.throwCharge = Math.min(1, this.throwCharge + 0.02);
+      return;
+    }
+    if (w.id === "khanda") {
+      this.lastShot = this.time;
+      this.meleeSwing = 0.28;
+      this.audio.swing();
+      this.meleeHit(w);
+      return;
+    }
+    if (this.ammo[this.wIndex]! <= 0) {
+      this.startReload();
+      return;
+    }
+    if (w.mode !== "auto" && this.lastShot > 0 && this.mouseHeldSince) return;
+
+    this.lastShot = this.time;
+    this.ammo[this.wIndex]! -= 1;
+    this.shotsFired += 1;
+    this.mouseHeldSince = w.mode !== "auto";
+    this.audio.shot(w);
+    this.muzzleLight.position.copy(this.pos);
+    this.muzzleLight.intensity = 9;
+    this.recoilPitch += w.recoil * (this.ads ? 0.55 : 1);
+    this.recoilYaw += (Math.random() - 0.5) * w.recoil * 0.8;
+    this.shake = Math.max(this.shake, w.kick * 0.4);
+
+    const pellets = w.pellets ?? 1;
+    const spread = this.ads ? w.adsSpread : w.spread;
+    for (let p = 0; p < pellets; p++) this.fireRay(w, spread);
+    if (w.mode === "bolt") this.boltCycle = 0.35;
+    if (this.ammo[this.wIndex]! === 0) this.startReload();
+  }
+
+  private mouseHeldSince = false;
+  private boltCycle = 0;
+
+  private fireRay(w: WeaponDef, spread: number) {
+    const dir = new THREE.Vector3(0, 0, -1)
+      .applyEuler(new THREE.Euler(this.pitch, this.yaw, 0))
+      .normalize();
+    dir.x += (Math.random() - 0.5) * spread;
+    dir.y += (Math.random() - 0.5) * spread;
+    dir.z += (Math.random() - 0.5) * spread;
+    dir.normalize();
+
+    const origin = this.pos.clone();
+    this.raycaster.set(origin, dir);
+    this.raycaster.far = w.range;
+
+    const targets: THREE.Object3D[] = [];
+    for (const e of this.enemies) if (!e.dead) targets.push(e.hitBody, e.hitHead);
+    const hits = this.raycaster.intersectObjects(targets, false);
+    const worldHits = this.raycaster.intersectObjects(this.worldGroup.children, true);
+    const worldDist = worldHits[0]?.distance ?? Infinity;
+
+    const hit = hits[0];
+    if (hit && hit.distance < worldDist) {
+      const enemy = this.enemies.find((e) => e.hitBody === hit.object || e.hitHead === hit.object);
+      if (enemy) {
+        const head = hit.object === enemy.hitHead;
+        const falloff = clamp(1 - hit.distance / w.range, 0.42, 1);
+        const dmg = w.damage * (head ? w.headMult : 1) * falloff * this.damageMultiplier();
+        this.shotsHit += 1;
+        this.hitmark = 0.16;
+        this.audio.hit(head);
+        this.damageEnemy(enemy, dmg, head, hit.point);
+      }
+      this.spawnTracer(origin, hit.point);
+    } else if (worldHits[0]) {
+      this.spawnTracer(origin, worldHits[0].point);
+      this.spawnImpact(worldHits[0].point, worldHits[0].face?.normal ?? new THREE.Vector3(0, 1, 0));
+    } else {
+      this.spawnTracer(origin, origin.clone().add(dir.multiplyScalar(w.range)));
+    }
+  }
+
+  private meleeHit(w: WeaponDef) {
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch, this.yaw, 0));
+    let landed = false;
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const to = e.h.root.position.clone().setY(this.pos.y).sub(this.pos);
+      const dist = to.length();
+      if (dist > w.range) continue;
+      if (forward.dot(to.normalize()) < 0.45) continue;
+      landed = true;
+      this.shotsFired += 1;
+      this.shotsHit += 1;
+      this.hitmark = 0.2;
+      this.damageEnemy(e, w.damage * this.damageMultiplier(), false, e.h.root.position.clone().setY(1.4));
+      this.audio.hit(false);
+    }
+    if (!landed) this.shotsFired += 1;
+  }
+
+  /* ---------------- grenades ------------------------------------------ */
+
+  private throwGrenade() {
+    const w = this.weapon;
+    if (this.ammo[this.wIndex]! <= 0) {
+      this.throwCharge = 0;
+      return;
+    }
+    this.ammo[this.wIndex]! -= 1;
+    const power = 12 + this.throwCharge * 14;
+    this.throwCharge = 0;
+    const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(this.pitch + 0.12, this.yaw, 0));
+    const origin = this.pos.clone().add(dir.clone().multiplyScalar(0.7));
+    this.spawnGrenade(origin, dir.multiplyScalar(power), w);
+    this.audio.noise(0.15, 0.2, 1400, 2);
+    this.net?.sendEvent({
+      type: "grenade",
+      x: origin.x,
+      y: origin.y,
+      z: origin.z,
+      vx: dir.x * power,
+      vy: dir.y * power,
+      vz: dir.z * power,
+      kind: w.id,
+    } as Omit<NetEvent, "from">);
+    this.lastShot = this.time;
+  }
+
+  private spawnGrenade(origin: THREE.Vector3, vel: THREE.Vector3, w: WeaponDef) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(
+      w.id === "smoke" ? new THREE.CylinderGeometry(0.06, 0.06, 0.18, 12) : new THREE.SphereGeometry(0.08, 12, 10),
+      new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.45, metalness: 0.6 }),
+    );
+    group.add(body);
+    group.position.copy(origin);
+    this.scene.add(group);
+    this.projectiles.push({ mesh: group, vel: vel.clone(), fuse: w.fuse ?? 3, weapon: w });
+  }
+
+  private explode(pos: THREE.Vector3, w: WeaponDef) {
+    if (w.id === "smoke") {
+      this.spawnSmoke(pos, w.blastRadius ?? 8);
+      this.audio.noise(0.8, 0.4, 700, 1.2);
+      return;
+    }
+    this.audio.explode();
+    const radius = w.blastRadius ?? 8;
+    const flash = new THREE.PointLight(0xffb060, 40, radius * 4, 2);
+    flash.position.copy(pos);
+    this.scene.add(flash);
+    setTimeout(() => this.scene.remove(flash), 120);
+
+    for (let i = 0; i < 34; i++) {
+      this.spawnParticle(pos, 0xffb347, rand(0.08, 0.22), rand(6, 16), 0.6, 12);
+    }
+    for (let i = 0; i < 20; i++) {
+      this.spawnParticle(pos, 0x4a4a4a, rand(0.1, 0.3), rand(2, 6), 1.4, 3);
+    }
+
+    for (const e of this.enemies) {
+      if (e.dead) continue;
+      const d = e.h.root.position.distanceTo(pos);
+      if (d < radius) {
+        const dmg = w.damage * (1 - d / radius) * this.damageMultiplier();
+        this.damageEnemy(e, dmg, false, e.h.root.position.clone().setY(1.2));
+      }
+    }
+    const pd = this.pos.distanceTo(pos);
+    if (pd < radius) {
+      this.takeDamage(w.damage * 0.5 * (1 - pd / radius));
+      this.shake = Math.max(this.shake, 0.7);
+    }
+    this.shake = Math.max(this.shake, clamp(1 - pd / (radius * 2), 0, 0.8));
+  }
+
+  private spawnSmoke(pos: THREE.Vector3, radius: number) {
+    const count = 240;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const r = Math.random() * radius * 0.8;
+      const a = Math.random() * Math.PI * 2;
+      positions[i * 3] = pos.x + Math.cos(a) * r;
+      positions[i * 3 + 1] = pos.y + Math.random() * radius * 0.6;
+      positions[i * 3 + 2] = pos.z + Math.sin(a) * r;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const points = new THREE.Points(
+      geo,
+      new THREE.PointsMaterial({ color: 0xd8d8d8, size: 2.4, transparent: true, opacity: 0.55, depthWrite: false }),
+    );
+    this.scene.add(points);
+    this.smokes.push({ pos: pos.clone(), radius, life: 14, points });
+  }
+
+  /* ---------------- particles & impacts ------------------------------- */
+
+  private spawnParticle(pos: THREE.Vector3, color: number, size: number, speed: number, life: number, gravity: number) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size, size, size),
+      new THREE.MeshBasicMaterial({ color, transparent: true }),
+    );
+    mesh.position.copy(pos);
+    this.scene.add(mesh);
+    this.particles.push({
+      mesh,
+      vel: new THREE.Vector3(rand(-1, 1), rand(-0.2, 1), rand(-1, 1)).normalize().multiplyScalar(speed),
+      life,
+      gravity,
+      spin: rand(-8, 8),
+    });
+  }
+
+  private spawnTracer(from: THREE.Vector3, to: THREE.Vector3) {
+    const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
+    const line = new THREE.Line(
+      geo,
+      new THREE.LineBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.75 }),
+    );
+    this.scene.add(line);
+    let opacity = 0.75;
+    const fade = () => {
+      opacity -= 0.12;
+      (line.material as THREE.LineBasicMaterial).opacity = opacity;
+      if (opacity <= 0 || this.disposed) {
+        this.scene.remove(line);
+        geo.dispose();
+      } else requestAnimationFrame(fade);
+    };
+    requestAnimationFrame(fade);
+  }
+
+  private spawnImpact(point: THREE.Vector3, normal: THREE.Vector3) {
+    for (let i = 0; i < 5; i++) this.spawnParticle(point, 0xbfae90, 0.05, rand(1.5, 4), 0.6, 9);
+    const decal = new THREE.Mesh(
+      new THREE.CircleGeometry(0.07, 8),
+      new THREE.MeshBasicMaterial({ color: 0x1a1512, transparent: true, opacity: 0.85 }),
+    );
+    decal.position.copy(point).add(normal.clone().multiplyScalar(0.02));
+    decal.lookAt(point.clone().add(normal));
+    this.scene.add(decal);
+    this.decals.push(decal);
+    if (this.decals.length > 90) {
+      const old = this.decals.shift();
+      if (old) this.scene.remove(old);
+    }
+  }

@@ -809,6 +809,172 @@ export class Game {
     }
   }
 
+  /**
+   * Map-specific landmarks — the silhouette that makes each theatre read as a
+   * different place even though the arena footprint is shared.
+   */
+  private buildLandmarks(
+    m: MapDef,
+    stoneMat: THREE.Material,
+    accentMat: THREE.Material,
+    darkMat: THREE.Material,
+  ) {
+    const half = ARENA / 2;
+    const sandbagRing = (cx: number, cz: number, radius: number, rows: number) => {
+      for (let r = 0; r < rows; r++) {
+        const count = Math.floor(radius * 5);
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2 + r * 0.2;
+          this.addBox(
+            1.5,
+            0.55,
+            0.85,
+            cx + Math.cos(a) * radius,
+            0.28 + r * 0.55,
+            cz + Math.sin(a) * radius,
+            darkMat,
+            r === 0,
+            a,
+          );
+        }
+      }
+    };
+
+    if (m.id === "jhansi") {
+      // granite keep with a cannon platform on each face
+      this.addBox(18, 12, 18, 0, 6, -6, stoneMat);
+      const merlonY = 12.6;
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        this.addBox(1.6, 1.3, 1.6, Math.cos(a) * 9.4, merlonY, -6 + Math.sin(a) * 9.4, stoneMat, false);
+      }
+      for (const sx of [-1, 1]) {
+        this.addBox(9, 2.2, 6, sx * 20, 1.1, 12, stoneMat);
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 5.4, 14), darkMat);
+        barrel.position.set(sx * 20, 2.9, 10.6);
+        barrel.rotation.set(-Math.PI / 2 + 0.18, 0, 0);
+        barrel.castShadow = true;
+        this.worldGroup.add(barrel);
+      }
+    } else if (m.id === "redfort") {
+      // Diwan-i-Aam: long scalloped arcade of sandstone bays
+      for (let bay = 0; bay < 9; bay++) {
+        const x = -24 + bay * 6;
+        for (const z of [-14, 6]) {
+          const col = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, 1.2), stoneMat);
+          col.position.set(x, 3.5, z);
+          col.castShadow = true;
+          this.worldGroup.add(col);
+          this.colliders.push({
+            box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, 3.5, z), new THREE.Vector3(1.4, 7, 1.4)),
+          });
+          const arch = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.42, 8, 18, Math.PI), accentMat);
+          arch.position.set(x + 3, 7, z);
+          this.worldGroup.add(arch);
+        }
+      }
+      for (const z of [-14, 6]) this.addBox(56, 1.1, 4.4, 3, 7.9, z, stoneMat, false);
+      this.addBox(12, 1.2, 12, 3, 0.6, -4, accentMat);
+    } else if (m.id === "thal") {
+      // Longewala post: sandbag horseshoe, burnt-out armour hulks, track
+      sandbagRing(0, 6, 9, 3);
+      for (let i = 0; i < 7; i++) {
+        const a = rand(0, Math.PI * 2);
+        const r = rand(20, half - 3);
+        const x = Math.cos(a) * r;
+        const z = Math.sin(a) * r;
+        this.addBox(6.4, 2, 3.2, x, 1, z, darkMat, true, a);
+        this.addBox(3.2, 1.1, 2.6, x, 2.4, z, darkMat, false, a);
+        const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 4.4, 10), darkMat);
+        gun.position.set(x + Math.cos(a) * 3.2, 2.5, z + Math.sin(a) * 3.2);
+        gun.rotation.set(Math.PI / 2, 0, -a);
+        this.worldGroup.add(gun);
+      }
+    } else if (m.id === "siachen") {
+      // glacier ridge line and an ice wall along the northern approach
+      for (let i = 0; i < 26; i++) {
+        const spike = new THREE.Mesh(
+          new THREE.ConeGeometry(rand(2, 5), rand(8, 22), 5),
+          new THREE.MeshStandardMaterial({ color: 0xdfeaf4, roughness: 0.35, metalness: 0.05 }),
+        );
+        const a = rand(0, Math.PI * 2);
+        const r = rand(half + 4, half + 46);
+        spike.position.set(Math.cos(a) * r, rand(1, 5), Math.sin(a) * r);
+        spike.castShadow = true;
+        this.worldGroup.add(spike);
+      }
+      for (let i = 0; i < 8; i++) {
+        this.addBox(7, 3.2, 2.6, -21 + i * 6, 1.6, -half + 6, new THREE.MeshStandardMaterial({ color: 0xeaf3fb, roughness: 0.4 }));
+      }
+      sandbagRing(0, 10, 6, 2);
+    } else if (m.id === "kerala") {
+      // backwater canal with moored snake boats
+      for (let i = 0; i < 5; i++) {
+        const hull = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.9, 12, 4, 10),
+          new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.8 }),
+        );
+        const a = rand(0, Math.PI * 2);
+        const r = rand(half - 12, half + 10);
+        hull.position.set(Math.cos(a) * r, 0.2, Math.sin(a) * r);
+        hull.rotation.set(Math.PI / 2, 0, a);
+        hull.castShadow = true;
+        this.worldGroup.add(hull);
+      }
+      for (let i = 0; i < 22; i++) {
+        const reed = new THREE.Mesh(
+          new THREE.ConeGeometry(0.5, rand(2.4, 4.5), 5),
+          new THREE.MeshStandardMaterial({ color: 0x4f7a34, roughness: 0.9 }),
+        );
+        reed.position.set(rand(-half, half), 1.4, rand(-half, half));
+        this.worldGroup.add(reed);
+      }
+    } else if (m.id === "konark") {
+      // stepped temple plinth with a stone chariot at the entrance
+      for (let s = 0; s < 4; s++) {
+        this.addBox(30 - s * 5, 1.1, 30 - s * 5, 0, 0.55 + s * 1.1, 0, stoneMat);
+      }
+      for (const sx of [-1, 1]) {
+        const horse = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3, 5), stoneMat);
+        horse.position.set(sx * 5, 5.4, 18);
+        horse.castShadow = true;
+        this.worldGroup.add(horse);
+      }
+    } else if (m.id === "andaman") {
+      // coastal battery emplacements facing the water line
+      for (let i = 0; i < 4; i++) {
+        const x = -21 + i * 14;
+        this.addBox(9, 2.6, 7, x, 1.3, half - 10, darkMat);
+        const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 7, 12), darkMat);
+        gun.position.set(x, 3.1, half - 14);
+        gun.rotation.set(-Math.PI / 2 + 0.12, 0, 0);
+        gun.castShadow = true;
+        this.worldGroup.add(gun);
+      }
+      for (let i = 0; i < 30; i++) {
+        this.addBox(2.2, 0.7, 1.2, rand(-half, half), 0.35, rand(-half, -half + 16), darkMat, true, rand(0, Math.PI));
+      }
+    } else {
+      // amber: pillared hall (Diwan-i-Khas) plus a step-well courtyard
+      for (let gx = 0; gx < 4; gx++) {
+        for (let gz = 0; gz < 3; gz++) {
+          const x = -18 + gx * 12;
+          const z = -20 + gz * 10;
+          const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, 6, 10), stoneMat);
+          col.position.set(x, 3, z);
+          col.castShadow = true;
+          this.worldGroup.add(col);
+          this.colliders.push({
+            box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, 3, z), new THREE.Vector3(1.3, 6, 1.3)),
+          });
+        }
+      }
+      for (let s = 0; s < 5; s++) {
+        this.addBox(16 - s * 2.4, 0.7, 16 - s * 2.4, 20, -0.35 - s * 0.7, 20, accentMat, false);
+      }
+    }
+  }
+
   /* ---------------- weapons ------------------------------------------ */
 
   private buildViewScene() {

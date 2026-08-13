@@ -41,28 +41,28 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
       )}
 
       {/* top bar */}
-      <div className="absolute inset-x-0 top-0 flex items-start justify-between px-6 py-4 text-xs uppercase tracking-[0.28em] text-muted-foreground">
-        <div className="rounded border border-hud-line bg-hud-panel px-4 py-2">
+      <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:px-6 md:py-4 md:text-xs md:tracking-[0.28em]">
+        <div className="max-w-[35%] rounded border border-hud-line bg-hud-panel px-2 py-1.5 md:max-w-none md:px-4 md:py-2">
           <div className="text-primary">{hud.mission}</div>
-          <div className="mt-1 text-[10px] normal-case tracking-normal">{hud.objective}</div>
+          <div className="mt-1 hidden text-[10px] normal-case tracking-normal sm:block">{hud.objective}</div>
         </div>
         <div className="text-center">
-          <div className="font-display text-2xl tracking-[0.2em] text-foreground">
+          <div className="font-display text-lg tracking-[0.2em] text-foreground md:text-2xl">
             WAVE {hud.wave}
             {hud.waveTotal ? ` / ${hud.waveTotal}` : ""}
           </div>
           <div className="mt-1">{hud.enemies} hostiles · {hud.kills} down</div>
           {hud.buyPhase && <div className="mt-1 text-primary">Buy phase {hud.buyTime}s · press B</div>}
         </div>
-        <div className="rounded border border-hud-line bg-hud-panel px-4 py-2 text-right">
-          <div className="font-display text-lg text-primary">₹{hud.cash}</div>
+        <div className="rounded border border-hud-line bg-hud-panel px-2 py-1.5 text-right md:px-4 md:py-2">
+          <div className="font-display text-base text-primary md:text-lg">₹{hud.cash}</div>
           <div className="mt-1 text-[10px]">Score {hud.score}</div>
           {hud.showFps && <div className="text-[10px]">{hud.fps} fps</div>}
         </div>
       </div>
 
       {/* squad */}
-      <div className="absolute left-6 top-1/3 space-y-1 text-[11px] uppercase tracking-[0.2em]">
+      <div className="absolute left-3 top-1/4 hidden space-y-1 text-[11px] uppercase tracking-[0.2em] sm:block md:left-6 md:top-1/3">
         {hud.teammates.map((t) => (
           <div
             key={t.name + t.character}
@@ -95,7 +95,7 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
       )}
 
       {/* bottom bar */}
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between px-6 py-5">
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between px-3 pb-48 md:px-6 md:pb-5">
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
             <span>HP</span>

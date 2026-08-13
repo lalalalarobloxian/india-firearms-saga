@@ -1038,7 +1038,7 @@ export class Game {
     if (this.character.ability === "speed_boost") s *= 1 + this.character.abilityValue;
     if (this.character.ability === "fast_reload") s *= 1.1;
     if (this.crouching) s *= 0.52;
-    else if (this.keys.has("shiftleft") && !this.ads) s *= 1.55;
+    else if ((this.keys.has("shiftleft") || this.sprintHeld) && !this.ads) s *= 1.55;
     if (this.ads) s *= 0.6;
     if (this.weapon.category === "melee") s *= 1.15;
     return s;
@@ -1748,7 +1748,11 @@ export class Game {
     if (this.keys.has("keys")) wish.sub(forward);
     if (this.keys.has("keya")) wish.sub(right);
     if (this.keys.has("keyd")) wish.add(right);
-    this.crouching = this.keys.has("controlleft") || this.keys.has("keyc");
+    if (this.axisX || this.axisY) {
+      wish.add(right.clone().multiplyScalar(this.axisX));
+      wish.add(forward.clone().multiplyScalar(-this.axisY));
+    }
+    this.crouching = this.keys.has("controlleft") || this.keys.has("keyc") || this.crouchHeld;
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(this.moveSpeed());
 
     const accel = this.onGround ? 14 : 4;

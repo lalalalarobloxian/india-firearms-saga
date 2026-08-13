@@ -1684,21 +1684,44 @@ export class Game {
     this.buyTimer = 15;
     this.banner = "WAVE CLEARED · PRESS B TO BUY";
     this.bannerUntil = this.time + 3.4;
+    this.bankProgress();
     if (this.net?.isHost) this.net.sendEvent({ type: "wave", wave: this.wave } as Omit<NetEvent, "from">);
   }
 
   private finished = false;
+  private banked = 0;
+  private bankedKills = 0;
+  private bankedWaves = 0;
+
+  /** Banks whatever has been earned so far — running this every wave means a
+   *  death can never wipe out a whole session's progress. */
+  private bankProgress() {
+    const cash = Math.round(this.earned) - this.banked;
+    const kills = this.kills - this.bankedKills;
+    const waves = Math.max(0, this.wave - 1) - this.bankedWaves;
+    if (cash <= 0 && kills <= 0 && waves <= 0) return;
+    this.banked += Math.max(0, cash);
+    this.bankedKills += Math.max(0, kills);
+    this.bankedWaves += Math.max(0, waves);
+    void import("./economy").then(({ bankEarnings }) =>
+      bankEarnings(Math.max(0, cash), Math.max(0, kills), Math.max(0, waves)),
+    );
+  }
+
   private finishRun() {
     if (this.finished) return;
     this.finished = true;
     void import("./economy").then(({ recordGameResult }) =>
       recordGameResult({
-        currencyEarned: this.earned,
-        kills: this.kills,
-        waves: Math.max(0, this.wave - 1),
+        currencyEarned: Math.max(0, Math.round(this.earned) - this.banked),
+        kills: Math.max(0, this.kills - this.bankedKills),
+        waves: Math.max(0, Math.max(0, this.wave - 1) - this.bankedWaves),
         score: this.score,
       }),
     );
+    this.banked = Math.round(this.earned);
+    this.bankedKills = this.kills;
+    this.bankedWaves = Math.max(0, this.wave - 1);
   }
 
   /* ---------------- shop ---------------------------------------------- */
@@ -2153,6 +2176,7 @@ export class Game {
     this.recoilPitch *= 1 - Math.min(1, dt * 7);
     this.recoilYaw *= 1 - Math.min(1, dt * 7);
     this.muzzleLight.intensity *= 1 - Math.min(1, dt * 14);
+    this.updateGamepad(dt);
 
     if (!this.dead && !this.buyOpen) {
       this.movePlayer(dt);

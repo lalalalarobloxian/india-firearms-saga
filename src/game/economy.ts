@@ -1,7 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
-
-export { supabase };
-
 export interface PlayerProfile {
   currency: number;
   total_kills: number;
@@ -46,34 +42,8 @@ export interface UnlockedItem {
   item_id: string;
 }
 
-// --- Profile operations ---
-
-export async function getProfile(): Promise<PlayerProfile> {
-  const { data, error } = await supabase
-    .from("player_profile")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Failed to load profile:", error.message);
-    return { ...DEFAULT_PROFILE };
-  }
-
-  if (!data) {
-    return { ...DEFAULT_PROFILE };
-  }
-
-  return {
-    currency: data.currency,
-    total_kills: data.total_kills,
-    total_waves: data.total_waves,
-    best_score: data.best_score,
-    best_wave: data.best_wave,
-    games_played: data.games_played,
-    settings: { ...DEFAULT_SETTINGS, ...((data.settings ?? {}) as Partial<GameSettings>) },
-  };
-}
+const PROFILE_KEY = "astra_shastra_profile";
+const UNLOCKED_KEY = "astra_shastra_unlocked";
 
 const DEFAULT_PROFILE: PlayerProfile = {
   currency: 500,
@@ -85,36 +55,49 @@ const DEFAULT_PROFILE: PlayerProfile = {
   settings: DEFAULT_SETTINGS,
 };
 
-/**
- * Persists the profile. Uses an upsert on the singleton row so a fresh
- * install (no row yet) still banks currency instead of silently no-oping.
- */
+function localStorageAvailable(): boolean {
+  try {
+    return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  } catch {
+    return false;
+  }
+}
+
+// --- Profile operations ---
+
+export async function getProfile(): Promise<PlayerProfile> {
+  if (!localStorageAvailable()) return { ...DEFAULT_PROFILE };
+  try {
+    const raw = window.localStorage.getItem(PROFILE_KEY);
+    if (!raw) return { ...DEFAULT_PROFILE };
+    const data = JSON.parse(raw) as Partial<PlayerProfile>;
+    return {
+      currency: typeof data.currency === "number" ? data.currency : DEFAULT_PROFILE.currency,
+      total_kills: typeof data.total_kills === "number" ? data.total_kills : 0,
+      total_waves: typeof data.total_waves === "number" ? data.total_waves : 0,
+      best_score: typeof data.best_score === "number" ? data.best_score : 0,
+      best_wave: typeof data.best_wave === "number" ? data.best_wave : 0,
+      games_played: typeof data.games_played === "number" ? data.games_played : 0,
+      settings: { ...DEFAULT_SETTINGS, ...((data.settings ?? {}) as Partial<GameSettings>) },
+    };
+  } catch {
+    return { ...DEFAULT_PROFILE };
+  }
+}
+
 export async function saveProfile(updates: Partial<PlayerProfile>): Promise<PlayerProfile> {
   const current = await getProfile();
   const merged: PlayerProfile = { ...current, ...updates };
-
-  const { error } = await supabase.from("player_profile").upsert(
-    {
-      id: 1,
-      currency: Math.max(0, Math.round(merged.currency)),
-      total_kills: merged.total_kills,
-      total_waves: merged.total_waves,
-      best_score: merged.best_score,
-      best_wave: merged.best_wave,
-      games_played: merged.games_played,
-      settings: merged.settings as unknown as Record<string, never>,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" },
-  );
-  if (error) console.error("Failed to save profile:", error.message);
+  if (localStorageAvailable()) {
+    try {
+      window.localStorage.setItem(PROFILE_KEY, JSON.stringify(merged));
+    } catch {
+      // storage full or blocked — non-fatal
+    }
+  }
   return merged;
 }
 
-/**
- * Banks currency mid-run (called on every wave clear) so a death never wipes
- * out everything the player earned. Returns the new banked total.
- */
 export async function bankEarnings(amount: number, kills = 0, waves = 0): Promise<number> {
   if (amount <= 0 && kills <= 0 && waves <= 0) return (await getProfile()).currency;
   const profile = await getProfile();
@@ -146,33 +129,38 @@ export async function recordGameResult(result: {
 // --- Unlock operations ---
 
 export async function getUnlocked(): Promise<Record<ItemType, string[]>> {
-  const { data, error } = await supabase.from("unlocked_items").select("*");
-  if (error) {
-    console.error("Failed to load unlocks:", error.message);
+  if (!localStorageAvailable()) return { weapon: [], character: [], map: [] };
+  try {
+    const raw = window.localStorage.getItem(UNLOCKED_KEY);
+    if (!raw) return { weapon: [], character: [], map: [] };
+    const data = JSON.parse(raw) as Record<ItemType, string[]>;
+    return {
+      weapon: Array.isArray(data.weapon) ? data.weapon : [],
+      character: Array.isArray(data.character) ? data.character : [],
+      map: Array.isArray(data.map) ? data.map : [],
+    };
+  } catch {
     return { weapon: [], character: [], map: [] };
   }
-  const result: Record<ItemType, string[]> = { weapon: [], character: [], map: [] };
-  for (const item of data ?? []) {
-    const typed = item as unknown as UnlockedItem;
-    if (result[typed.item_type]) {
-      result[typed.item_type].push(typed.item_id);
-    }
-  }
-  return result;
 }
 
 export async function purchaseItem(type: ItemType, itemId: string, price: number): Promise<boolean> {
   const profile = await getProfile();
   if (profile.currency < price) return false;
 
-  const { error: insertError } = await supabase
-    .from("unlocked_items")
-    .insert({ item_type: type, item_id: itemId });
-  if (insertError) {
-    console.error("Purchase insert failed:", insertError.message);
-    return false;
+  const unlocked = await getUnlocked();
+  if (unlocked[type].includes(itemId)) {
+    // already owned — still charge? no, just fail gracefully
+    return true;
   }
-
+  unlocked[type].push(itemId);
+  if (localStorageAvailable()) {
+    try {
+      window.localStorage.setItem(UNLOCKED_KEY, JSON.stringify(unlocked));
+    } catch {
+      return false;
+    }
+  }
   await saveProfile({ currency: profile.currency - price });
   return true;
 }

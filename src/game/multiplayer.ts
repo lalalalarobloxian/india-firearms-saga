@@ -56,7 +56,13 @@ export interface MultiplayerOptions {
   mapId: string;
   onLobby?: (members: LobbyMember[]) => void;
   onEvent?: (e: NetEvent) => void;
-  onStart?: (payload: { mapId: string; mission: string }) => void;
+  onStart?: (payload: StartPayload) => void;
+}
+
+export interface StartPayload {
+  mapId: string;
+  mission: string;
+  mode: "survival" | "mission";
 }
 
 const SEND_HZ = 12;
@@ -137,7 +143,7 @@ export class Multiplayer {
     });
 
     channel.on("broadcast", { event: "start" }, ({ payload }) => {
-      this.opts.onStart?.(payload as { mapId: string; mission: string });
+      this.opts.onStart?.(payload as StartPayload);
     });
 
     await new Promise<void>((resolve) => {
@@ -179,9 +185,18 @@ export class Multiplayer {
     });
   }
 
-  startMatch(mapId: string, mission: string) {
-    void this.channel?.send({ type: "broadcast", event: "start", payload: { mapId, mission } });
-    this.opts.onStart?.({ mapId, mission });
+  startMatch(mapId: string, mission: string, mode: "survival" | "mission") {
+    const payload: StartPayload = { mapId, mission, mode };
+    void this.channel?.send({ type: "broadcast", event: "start", payload });
+    this.opts.onStart?.(payload);
+  }
+
+  setOnEvent(handler: (e: NetEvent) => void) {
+    this.opts.onEvent = handler;
+  }
+
+  setOnStart(handler: (payload: StartPayload) => void) {
+    this.opts.onStart = handler;
   }
 
   sendState(s: Omit<PeerState, "id" | "name" | "character" | "t">) {

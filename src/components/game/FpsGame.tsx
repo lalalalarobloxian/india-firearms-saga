@@ -97,7 +97,7 @@ export default function FpsGame() {
     };
     const g = new Game(mount.current, opts, onHud);
     game.current = g;
-    if (net.current) net.current["opts"].onEvent = (e) => g.handleNetEvent(e);
+    if (net.current) net.current.setOnEvent((e) => g.handleNetEvent(e));
     if (isTouch) setLocked(true);
     else g.lock();
     const onLockChange = () => setLocked(isTouch || document.pointerLockElement !== null);
@@ -163,7 +163,12 @@ export default function FpsGame() {
       character: characterId,
       mapId,
       onLobby: setLobby,
-      onStart: () => setStarted(true),
+      onStart: (payload) => {
+        if (payload.mode) setMode(payload.mode);
+        if (payload.mode === "mission" && payload.mission) setMissionId(payload.mission);
+        if (payload.mode === "survival" && payload.mapId) setMapId(payload.mapId);
+        setStarted(true);
+      },
     });
     net.current = mp;
     await mp.join();
@@ -348,12 +353,19 @@ export default function FpsGame() {
                   </div>
                   <button
                     onClick={() => {
-                      if (net.current) net.current.startMatch(mapId, missionId);
-                      else setStarted(true);
+                      if (net.current) {
+                        if (net.current.isHost) {
+                          net.current.startMatch(mapId, missionId, mode);
+                        } else {
+                          setStarted(true);
+                        }
+                      } else {
+                        setStarted(true);
+                      }
                     }}
                     className="w-full rounded-md bg-primary px-10 py-5 font-display text-xl tracking-[0.25em] text-primary-foreground md:w-auto"
                   >
-                    DEPLOY
+                    {connected && lobby.length > 1 && !lobby.find((m) => m.id === net.current?.id)?.host ? "READY" : "DEPLOY"}
                   </button>
                 </section>
               </>

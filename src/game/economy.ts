@@ -85,22 +85,45 @@ const DEFAULT_PROFILE: PlayerProfile = {
   settings: DEFAULT_SETTINGS,
 };
 
-export async function saveProfile(updates: Partial<PlayerProfile>): Promise<void> {
-  const payload = {
-    updated_at: new Date().toISOString(),
-    ...(updates.currency !== undefined ? { currency: updates.currency } : {}),
-    ...(updates.total_kills !== undefined ? { total_kills: updates.total_kills } : {}),
-    ...(updates.total_waves !== undefined ? { total_waves: updates.total_waves } : {}),
-    ...(updates.best_score !== undefined ? { best_score: updates.best_score } : {}),
-    ...(updates.best_wave !== undefined ? { best_wave: updates.best_wave } : {}),
-    ...(updates.games_played !== undefined ? { games_played: updates.games_played } : {}),
-    ...(updates.settings !== undefined
-      ? { settings: updates.settings as unknown as Record<string, never> }
-      : {}),
-  };
+/**
+ * Persists the profile. Uses an upsert on the singleton row so a fresh
+ * install (no row yet) still banks currency instead of silently no-oping.
+ */
+export async function saveProfile(updates: Partial<PlayerProfile>): Promise<PlayerProfile> {
+  const current = await getProfile();
+  const merged: PlayerProfile = { ...current, ...updates };
 
-  const { error } = await supabase.from("player_profile").update(payload).eq("id", 1);
+  const { error } = await supabase.from("player_profile").upsert(
+    {
+      id: 1,
+      currency: Math.max(0, Math.round(merged.currency)),
+      total_kills: merged.total_kills,
+      total_waves: merged.total_waves,
+      best_score: merged.best_score,
+      best_wave: merged.best_wave,
+      games_played: merged.games_played,
+      settings: merged.settings as unknown as Record<string, never>,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
   if (error) console.error("Failed to save profile:", error.message);
+  return merged;
+}
+
+/**
+ * Banks currency mid-run (called on every wave clear) so a death never wipes
+ * out everything the player earned. Returns the new banked total.
+ */
+export async function bankEarnings(amount: number, kills = 0, waves = 0): Promise<number> {
+  if (amount <= 0 && kills <= 0 && waves <= 0) return (await getProfile()).currency;
+  const profile = await getProfile();
+  const next = await saveProfile({
+    currency: profile.currency + Math.max(0, Math.round(amount)),
+    total_kills: profile.total_kills + kills,
+    total_waves: profile.total_waves + waves,
+  });
+  return next.currency;
 }
 
 export async function recordGameResult(result: {
@@ -111,7 +134,7 @@ export async function recordGameResult(result: {
 }): Promise<void> {
   const profile = await getProfile();
   await saveProfile({
-    currency: profile.currency + result.currencyEarned,
+    currency: profile.currency + Math.max(0, Math.round(result.currencyEarned)),
     total_kills: profile.total_kills + result.kills,
     total_waves: profile.total_waves + result.waves,
     best_score: Math.max(profile.best_score, result.score),

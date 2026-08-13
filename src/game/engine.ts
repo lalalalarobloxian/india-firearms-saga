@@ -164,6 +164,27 @@ interface Particle {
 
 const ARENA = 62;
 
+/** Per-map arena layout so no two theatres are shaped alike. */
+interface Layout {
+  walls: "full" | "low" | "partial" | "none";
+  bastions: boolean;
+  pavilion: boolean;
+  cover: number;
+  /** spawn ring radius factor */
+  ring: number;
+}
+
+const LAYOUTS: Record<string, Layout> = {
+  amber: { walls: "full", bastions: true, pavilion: true, cover: 22, ring: 0.9 },
+  jhansi: { walls: "full", bastions: true, pavilion: false, cover: 18, ring: 0.85 },
+  redfort: { walls: "full", bastions: false, pavilion: true, cover: 14, ring: 0.92 },
+  siachen: { walls: "none", bastions: false, pavilion: false, cover: 24, ring: 1 },
+  thal: { walls: "low", bastions: false, pavilion: false, cover: 30, ring: 1 },
+  kerala: { walls: "none", bastions: false, pavilion: false, cover: 16, ring: 0.95 },
+  konark: { walls: "low", bastions: false, pavilion: false, cover: 12, ring: 0.95 },
+  andaman: { walls: "partial", bastions: true, pavilion: false, cover: 20, ring: 1 },
+};
+
 /* ------------------------------------------------------------------ */
 /*  Audio                                                              */
 /* ------------------------------------------------------------------ */
@@ -366,6 +387,13 @@ export class Game {
   private keys = new Set<string>();
   private mouseDown = false;
   private rightDown = false;
+  /** virtual axes fed by touch sticks / gamepad (-1..1) */
+  private axisX = 0;
+  private axisY = 0;
+  private sprintHeld = false;
+  private crouchHeld = false;
+  private padPrev = new Map<number, boolean>();
+  private padConnected = false;
   private disposed = false;
   private frames = 0;
   private fpsTime = 0;
@@ -502,19 +530,31 @@ export class Game {
     const accentMat = new THREE.MeshStandardMaterial({ color: m.accent, roughness: 0.6, metalness: 0.25 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x30323a, roughness: 0.75, metalness: 0.2 });
 
-    // perimeter walls with merlons
+    const layout = LAYOUTS[m.id] ?? LAYOUTS["amber"]!;
     const half = ARENA / 2;
-    const wallH = 9;
-    for (const [dx, dz] of [
-      [0, -half],
-      [0, half],
-      [-half, 0],
-      [half, 0],
-    ] as [number, number][]) {
+
+    // perimeter walls with merlons (shape depends on the theatre)
+    const wallH = layout.walls === "low" ? 2.6 : 9;
+    const sides: [number, number][] =
+      layout.walls === "none"
+        ? []
+        : layout.walls === "partial"
+          ? [
+              [0, -half],
+              [-half, 0],
+            ]
+          : [
+              [0, -half],
+              [0, half],
+              [-half, 0],
+              [half, 0],
+            ];
+    for (const [dx, dz] of sides) {
       const horizontal = dz !== 0;
       const w = horizontal ? ARENA + 4 : 3;
       const d = horizontal ? 3 : ARENA + 4;
       this.addBox(w, wallH, d, dx, wallH / 2, dz, stoneMat);
+      if (layout.walls === "low") continue;
       const count = 14;
       for (let i = 0; i <= count; i++) {
         const t = (i / count - 0.5) * ARENA;
@@ -532,12 +572,12 @@ export class Game {
     }
 
     // corner bastions
-    for (const [sx, sz] of [
+    for (const [sx, sz] of (layout.bastions ? [
       [-1, -1],
       [1, -1],
       [-1, 1],
       [1, 1],
-    ] as [number, number][]) {
+    ] : []) as [number, number][]) {
       const x = sx * (half - 3);
       const z = sz * (half - 3);
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5, 13, 18), stoneMat);
@@ -555,30 +595,32 @@ export class Game {
       this.worldGroup.add(finial);
     }
 
-    // central pavilion (all themes) — pillars + roof, gives vertical play
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const px = Math.cos(a) * 8;
-      const pz = Math.sin(a) * 8;
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 6.5, 12), stoneMat);
-      pillar.position.set(px, 3.25, pz);
-      pillar.castShadow = true;
-      this.worldGroup.add(pillar);
-      this.colliders.push({
-        box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(px, 3.25, pz), new THREE.Vector3(1.4, 6.5, 1.4)),
-      });
+    // central pavilion — pillars + roof, gives vertical play
+    if (layout.pavilion) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const px = Math.cos(a) * 8;
+        const pz = Math.sin(a) * 8;
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 6.5, 12), stoneMat);
+        pillar.position.set(px, 3.25, pz);
+        pillar.castShadow = true;
+        this.worldGroup.add(pillar);
+        this.colliders.push({
+          box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(px, 3.25, pz), new THREE.Vector3(1.4, 6.5, 1.4)),
+        });
+      }
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 11.5, 1.1, 8), stoneMat);
+      roof.position.y = 7.1;
+      roof.castShadow = roof.receiveShadow = true;
+      this.worldGroup.add(roof);
+      const cupola = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), accentMat);
+      cupola.position.y = 7.6;
+      this.worldGroup.add(cupola);
     }
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 11.5, 1.1, 8), stoneMat);
-    roof.position.y = 7.1;
-    roof.castShadow = roof.receiveShadow = true;
-    this.worldGroup.add(roof);
-    const cupola = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), accentMat);
-    cupola.position.y = 7.6;
-    this.worldGroup.add(cupola);
 
     // scattered cover crates / sandbags / rocks
     const coverMat = m.theme === "snow" || m.theme === "desert" ? darkMat : accentMat;
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < layout.cover; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = rand(14, half - 6);
       const x = Math.cos(a) * r;
@@ -588,12 +630,14 @@ export class Game {
     }
 
     this.buildTheme(m, stoneMat, accentMat, darkMat);
+    this.buildLandmarks(m, stoneMat, accentMat, darkMat);
 
     // spawn points around the ring
     this.spawnPoints = [];
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
-      this.spawnPoints.push(new THREE.Vector3(Math.cos(a) * (half - 6), 0, Math.sin(a) * (half - 6)));
+      const r = (half - 6) * layout.ring;
+      this.spawnPoints.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
     }
 
     // atmosphere
@@ -772,6 +816,172 @@ export class Game {
     }
   }
 
+  /**
+   * Map-specific landmarks — the silhouette that makes each theatre read as a
+   * different place even though the arena footprint is shared.
+   */
+  private buildLandmarks(
+    m: MapDef,
+    stoneMat: THREE.Material,
+    accentMat: THREE.Material,
+    darkMat: THREE.Material,
+  ) {
+    const half = ARENA / 2;
+    const sandbagRing = (cx: number, cz: number, radius: number, rows: number) => {
+      for (let r = 0; r < rows; r++) {
+        const count = Math.floor(radius * 5);
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2 + r * 0.2;
+          this.addBox(
+            1.5,
+            0.55,
+            0.85,
+            cx + Math.cos(a) * radius,
+            0.28 + r * 0.55,
+            cz + Math.sin(a) * radius,
+            darkMat,
+            r === 0,
+            a,
+          );
+        }
+      }
+    };
+
+    if (m.id === "jhansi") {
+      // granite keep with a cannon platform on each face
+      this.addBox(18, 12, 18, 0, 6, -6, stoneMat);
+      const merlonY = 12.6;
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        this.addBox(1.6, 1.3, 1.6, Math.cos(a) * 9.4, merlonY, -6 + Math.sin(a) * 9.4, stoneMat, false);
+      }
+      for (const sx of [-1, 1]) {
+        this.addBox(9, 2.2, 6, sx * 20, 1.1, 12, stoneMat);
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 5.4, 14), darkMat);
+        barrel.position.set(sx * 20, 2.9, 10.6);
+        barrel.rotation.set(-Math.PI / 2 + 0.18, 0, 0);
+        barrel.castShadow = true;
+        this.worldGroup.add(barrel);
+      }
+    } else if (m.id === "redfort") {
+      // Diwan-i-Aam: long scalloped arcade of sandstone bays
+      for (let bay = 0; bay < 9; bay++) {
+        const x = -24 + bay * 6;
+        for (const z of [-14, 6]) {
+          const col = new THREE.Mesh(new THREE.BoxGeometry(1.2, 7, 1.2), stoneMat);
+          col.position.set(x, 3.5, z);
+          col.castShadow = true;
+          this.worldGroup.add(col);
+          this.colliders.push({
+            box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, 3.5, z), new THREE.Vector3(1.4, 7, 1.4)),
+          });
+          const arch = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.42, 8, 18, Math.PI), accentMat);
+          arch.position.set(x + 3, 7, z);
+          this.worldGroup.add(arch);
+        }
+      }
+      for (const z of [-14, 6]) this.addBox(56, 1.1, 4.4, 3, 7.9, z, stoneMat, false);
+      this.addBox(12, 1.2, 12, 3, 0.6, -4, accentMat);
+    } else if (m.id === "thal") {
+      // Longewala post: sandbag horseshoe, burnt-out armour hulks, track
+      sandbagRing(0, 6, 9, 3);
+      for (let i = 0; i < 7; i++) {
+        const a = rand(0, Math.PI * 2);
+        const r = rand(20, half - 3);
+        const x = Math.cos(a) * r;
+        const z = Math.sin(a) * r;
+        this.addBox(6.4, 2, 3.2, x, 1, z, darkMat, true, a);
+        this.addBox(3.2, 1.1, 2.6, x, 2.4, z, darkMat, false, a);
+        const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 4.4, 10), darkMat);
+        gun.position.set(x + Math.cos(a) * 3.2, 2.5, z + Math.sin(a) * 3.2);
+        gun.rotation.set(Math.PI / 2, 0, -a);
+        this.worldGroup.add(gun);
+      }
+    } else if (m.id === "siachen") {
+      // glacier ridge line and an ice wall along the northern approach
+      for (let i = 0; i < 26; i++) {
+        const spike = new THREE.Mesh(
+          new THREE.ConeGeometry(rand(2, 5), rand(8, 22), 5),
+          new THREE.MeshStandardMaterial({ color: 0xdfeaf4, roughness: 0.35, metalness: 0.05 }),
+        );
+        const a = rand(0, Math.PI * 2);
+        const r = rand(half + 4, half + 46);
+        spike.position.set(Math.cos(a) * r, rand(1, 5), Math.sin(a) * r);
+        spike.castShadow = true;
+        this.worldGroup.add(spike);
+      }
+      for (let i = 0; i < 8; i++) {
+        this.addBox(7, 3.2, 2.6, -21 + i * 6, 1.6, -half + 6, new THREE.MeshStandardMaterial({ color: 0xeaf3fb, roughness: 0.4 }));
+      }
+      sandbagRing(0, 10, 6, 2);
+    } else if (m.id === "kerala") {
+      // backwater canal with moored snake boats
+      for (let i = 0; i < 5; i++) {
+        const hull = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.9, 12, 4, 10),
+          new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.8 }),
+        );
+        const a = rand(0, Math.PI * 2);
+        const r = rand(half - 12, half + 10);
+        hull.position.set(Math.cos(a) * r, 0.2, Math.sin(a) * r);
+        hull.rotation.set(Math.PI / 2, 0, a);
+        hull.castShadow = true;
+        this.worldGroup.add(hull);
+      }
+      for (let i = 0; i < 22; i++) {
+        const reed = new THREE.Mesh(
+          new THREE.ConeGeometry(0.5, rand(2.4, 4.5), 5),
+          new THREE.MeshStandardMaterial({ color: 0x4f7a34, roughness: 0.9 }),
+        );
+        reed.position.set(rand(-half, half), 1.4, rand(-half, half));
+        this.worldGroup.add(reed);
+      }
+    } else if (m.id === "konark") {
+      // stepped temple plinth with a stone chariot at the entrance
+      for (let s = 0; s < 4; s++) {
+        this.addBox(30 - s * 5, 1.1, 30 - s * 5, 0, 0.55 + s * 1.1, 0, stoneMat);
+      }
+      for (const sx of [-1, 1]) {
+        const horse = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3, 5), stoneMat);
+        horse.position.set(sx * 5, 5.4, 18);
+        horse.castShadow = true;
+        this.worldGroup.add(horse);
+      }
+    } else if (m.id === "andaman") {
+      // coastal battery emplacements facing the water line
+      for (let i = 0; i < 4; i++) {
+        const x = -21 + i * 14;
+        this.addBox(9, 2.6, 7, x, 1.3, half - 10, darkMat);
+        const gun = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 7, 12), darkMat);
+        gun.position.set(x, 3.1, half - 14);
+        gun.rotation.set(-Math.PI / 2 + 0.12, 0, 0);
+        gun.castShadow = true;
+        this.worldGroup.add(gun);
+      }
+      for (let i = 0; i < 30; i++) {
+        this.addBox(2.2, 0.7, 1.2, rand(-half, half), 0.35, rand(-half, -half + 16), darkMat, true, rand(0, Math.PI));
+      }
+    } else {
+      // amber: pillared hall (Diwan-i-Khas) plus a step-well courtyard
+      for (let gx = 0; gx < 4; gx++) {
+        for (let gz = 0; gz < 3; gz++) {
+          const x = -18 + gx * 12;
+          const z = -20 + gz * 10;
+          const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, 6, 10), stoneMat);
+          col.position.set(x, 3, z);
+          col.castShadow = true;
+          this.worldGroup.add(col);
+          this.colliders.push({
+            box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, 3, z), new THREE.Vector3(1.3, 6, 1.3)),
+          });
+        }
+      }
+      for (let s = 0; s < 5; s++) {
+        this.addBox(16 - s * 2.4, 0.7, 16 - s * 2.4, 20, -0.35 - s * 0.7, 20, accentMat, false);
+      }
+    }
+  }
+
   /* ---------------- weapons ------------------------------------------ */
 
   private buildViewScene() {
@@ -828,7 +1038,7 @@ export class Game {
     if (this.character.ability === "speed_boost") s *= 1 + this.character.abilityValue;
     if (this.character.ability === "fast_reload") s *= 1.1;
     if (this.crouching) s *= 0.52;
-    else if (this.keys.has("shiftleft") && !this.ads) s *= 1.55;
+    else if ((this.keys.has("shiftleft") || this.sprintHeld) && !this.ads) s *= 1.55;
     if (this.ads) s *= 0.6;
     if (this.weapon.category === "melee") s *= 1.15;
     return s;
@@ -924,6 +1134,109 @@ export class Game {
   lock() {
     void this.renderer.domElement.requestPointerLock?.();
   }
+
+  /* ---------------- touch + controller API ---------------------------- */
+
+  /** left virtual stick / gamepad left stick, values -1..1 */
+  setMoveAxis(x: number, y: number) {
+    this.axisX = clamp(x, -1, 1);
+    this.axisY = clamp(y, -1, 1);
+    this.sprintHeld = Math.hypot(x, y) > 0.85;
+  }
+
+  /** touch look pad / right stick — pixels or scaled units */
+  lookDelta(dx: number, dy: number) {
+    const sens = 0.0045 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.weapon.zoom) : 1);
+    this.yaw -= dx * sens;
+    this.pitch = clamp(this.pitch - dy * sens, -1.5, 1.5);
+  }
+
+  setFire(down: boolean) {
+    if (this.buyOpen) return;
+    if (!down && this.mouseDown && this.weapon.category === "grenade" && this.throwCharge > 0) {
+      this.throwGrenade();
+    }
+    this.mouseDown = down;
+  }
+
+  setAds(down: boolean) {
+    this.ads = down && this.weapon.category !== "grenade";
+  }
+
+  setCrouch(down: boolean) {
+    this.crouchHeld = down;
+  }
+
+  jump() {
+    if (this.onGround && !this.dead) {
+      this.vel.y = 7.4;
+      this.onGround = false;
+    }
+  }
+
+  reloadNow() {
+    this.startReload();
+  }
+
+  cycleWeapon(dir: number) {
+    this.selectWeapon((this.wIndex + dir + this.weapons.length) % this.weapons.length);
+  }
+
+  selectSlot(i: number) {
+    if (i >= 0 && i < this.weapons.length) this.selectWeapon(i);
+  }
+
+  equipCategory(cat: "grenade" | "melee") {
+    const i = this.weapons.findIndex((w) => w.category === cat);
+    if (i >= 0) this.selectWeapon(i);
+  }
+
+  get hasController() {
+    return this.padConnected;
+  }
+
+  private padButton(gp: Gamepad, index: number) {
+    const pressed = !!gp.buttons[index]?.pressed;
+    const was = this.padPrev.get(index) ?? false;
+    this.padPrev.set(index, pressed);
+    return { pressed, justPressed: pressed && !was };
+  }
+
+  private updateGamepad(dt: number) {
+    const pads = navigator.getGamepads?.() ?? [];
+    const gp = Array.from(pads).find((p): p is Gamepad => !!p && p.connected);
+    this.padConnected = !!gp;
+    if (!gp || this.buyOpen || this.dead) return;
+
+    const dead = (v: number) => (Math.abs(v) < 0.18 ? 0 : v);
+    const lx = dead(gp.axes[0] ?? 0);
+    const ly = dead(gp.axes[1] ?? 0);
+    if (lx || ly) this.setMoveAxis(lx, ly);
+    else if (!this.touchActive) this.setMoveAxis(0, 0);
+
+    const rx = dead(gp.axes[2] ?? 0);
+    const ry = dead(gp.axes[3] ?? 0);
+    if (rx || ry) {
+      const speed = 260 * dt * (this.ads ? 0.55 : 1);
+      this.lookDelta(rx * speed, ry * speed);
+    }
+
+    const rt = (gp.buttons[7]?.value ?? 0) > 0.35 || !!gp.buttons[7]?.pressed;
+    const lt = (gp.buttons[6]?.value ?? 0) > 0.35 || !!gp.buttons[6]?.pressed;
+    this.setFire(rt);
+    this.setAds(lt);
+
+    if (this.padButton(gp, 0).justPressed) this.jump();
+    if (this.padButton(gp, 2).justPressed) this.reloadNow();
+    if (this.padButton(gp, 1).justPressed) this.equipCategory("melee");
+    if (this.padButton(gp, 3).justPressed) this.equipCategory("grenade");
+    if (this.padButton(gp, 5).justPressed) this.cycleWeapon(1);
+    if (this.padButton(gp, 4).justPressed) this.cycleWeapon(-1);
+    this.setCrouch(!!gp.buttons[10]?.pressed);
+  }
+
+  /** true while a finger owns the movement stick, so the pad doesn't fight it */
+  touchActive = false;
 
   private selectWeapon(i: number) {
     if (i === this.wIndex || this.dead) return;
@@ -1312,7 +1625,7 @@ export class Game {
     this.score += head ? 150 : 100;
     const gain = e.reward * (this.character.ability === "double_currency" ? 1 + this.character.abilityValue : 1);
     this.cash += Math.round(gain);
-    this.earned += Math.round(gain * 0.4);
+    this.earned += Math.round(gain * 0.5);
     this.waveEnemiesLeft = Math.max(0, this.waveEnemiesLeft - 1);
     this.pushFeed(`${this.playerName} ▸ ${e.name}`, head);
     this.net?.sendEvent({ type: "kill", name: this.playerName, target: e.name, head } as Omit<NetEvent, "from">);
@@ -1367,25 +1680,49 @@ export class Game {
       return;
     }
     this.cash += 300 + this.wave * 60;
+    this.earned += 120 + this.wave * 25;
     this.buyPhase = true;
     this.buyTimer = 15;
     this.banner = "WAVE CLEARED · PRESS B TO BUY";
     this.bannerUntil = this.time + 3.4;
+    this.bankProgress();
     if (this.net?.isHost) this.net.sendEvent({ type: "wave", wave: this.wave } as Omit<NetEvent, "from">);
   }
 
   private finished = false;
+  private banked = 0;
+  private bankedKills = 0;
+  private bankedWaves = 0;
+
+  /** Banks whatever has been earned so far — running this every wave means a
+   *  death can never wipe out a whole session's progress. */
+  private bankProgress() {
+    const cash = Math.round(this.earned) - this.banked;
+    const kills = this.kills - this.bankedKills;
+    const waves = Math.max(0, this.wave - 1) - this.bankedWaves;
+    if (cash <= 0 && kills <= 0 && waves <= 0) return;
+    this.banked += Math.max(0, cash);
+    this.bankedKills += Math.max(0, kills);
+    this.bankedWaves += Math.max(0, waves);
+    void import("./economy").then(({ bankEarnings }) =>
+      bankEarnings(Math.max(0, cash), Math.max(0, kills), Math.max(0, waves)),
+    );
+  }
+
   private finishRun() {
     if (this.finished) return;
     this.finished = true;
     void import("./economy").then(({ recordGameResult }) =>
       recordGameResult({
-        currencyEarned: this.earned,
-        kills: this.kills,
-        waves: Math.max(0, this.wave - 1),
+        currencyEarned: Math.max(0, Math.round(this.earned) - this.banked),
+        kills: Math.max(0, this.kills - this.bankedKills),
+        waves: Math.max(0, Math.max(0, this.wave - 1) - this.bankedWaves),
         score: this.score,
       }),
     );
+    this.banked = Math.round(this.earned);
+    this.bankedKills = this.kills;
+    this.bankedWaves = Math.max(0, this.wave - 1);
   }
 
   /* ---------------- shop ---------------------------------------------- */
@@ -1538,7 +1875,11 @@ export class Game {
     if (this.keys.has("keys")) wish.sub(forward);
     if (this.keys.has("keya")) wish.sub(right);
     if (this.keys.has("keyd")) wish.add(right);
-    this.crouching = this.keys.has("controlleft") || this.keys.has("keyc");
+    if (this.axisX || this.axisY) {
+      wish.add(right.clone().multiplyScalar(this.axisX));
+      wish.add(forward.clone().multiplyScalar(-this.axisY));
+    }
+    this.crouching = this.keys.has("controlleft") || this.keys.has("keyc") || this.crouchHeld;
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(this.moveSpeed());
 
     const accel = this.onGround ? 14 : 4;
@@ -1836,6 +2177,7 @@ export class Game {
     this.recoilPitch *= 1 - Math.min(1, dt * 7);
     this.recoilYaw *= 1 - Math.min(1, dt * 7);
     this.muzzleLight.intensity *= 1 - Math.min(1, dt * 14);
+    this.updateGamepad(dt);
 
     if (!this.dead && !this.buyOpen) {
       this.movePlayer(dt);
@@ -1916,6 +2258,9 @@ export class Game {
     this.score = 0;
     this.cash = 800;
     this.earned = 0;
+    this.banked = 0;
+    this.bankedKills = 0;
+    this.bankedWaves = 0;
     this.killfeed = [];
     this.buyPhase = true;
     this.buyTimer = 8;

@@ -98,6 +98,32 @@ export const MISSIONS: MissionDef[] = [
     difficulty: 1.2,
     reward: 1100,
   },
+  {
+    id: "saragarhi",
+    name: "Battle of Saragarhi",
+    year: "12 September 1897",
+    mapId: "amber",
+    objective: "21 Sikhs against 10,000 — hold the post for 8 waves",
+    brief:
+      "Havildar Ishar Singh and twenty men of the 36th Sikhs refuse to surrender the signalling post. Reload fast, pick your lanes, make every round count.",
+    waves: 8,
+    faction: "Tribal Lashkar",
+    difficulty: 1.35,
+    reward: 1500,
+  },
+  {
+    id: "kalinga",
+    name: "Kalinga Campaign",
+    year: "261 BCE",
+    mapId: "konark",
+    objective: "Hold the temple plinth — 6 waves",
+    brief:
+      "The war that broke Ashoka's heart. Stone chariot wheels, sun-bleached courtyards and wave after wave of Kalingan levies.",
+    waves: 6,
+    faction: "Kalingan Levy",
+    difficulty: 1.1,
+    reward: 950,
+  },
 ];
 
 export const SURVIVAL: MissionDef = {

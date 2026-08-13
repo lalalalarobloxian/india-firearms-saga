@@ -111,19 +111,19 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
         </div>
 
         <div className="flex items-end gap-4">
-          <div className="space-y-1 text-right text-[10px] uppercase tracking-[0.25em]">
+          <div className="hidden space-y-1 text-right text-[10px] uppercase tracking-[0.25em] md:block">
             {hud.slots.map((s, i) => (
               <div key={s.id} className={s.active ? "text-primary" : "text-muted-foreground/70"}>
                 {i + 1} · {s.name} {s.grenade ? `×${s.ammo}` : s.melee && s.reserve === 0 ? "" : `${s.ammo}`}
               </div>
             ))}
           </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-primary">{hud.weaponEra}</div>
-            <div className="font-display text-xl tracking-[0.1em] text-foreground">{hud.weapon}</div>
-            <div className="font-display text-4xl text-foreground">
+          <div className="text-right whitespace-nowrap">
+            <div className="hidden text-[10px] uppercase tracking-[0.3em] text-primary md:block">{hud.weaponEra}</div>
+            <div className="font-display text-sm tracking-[0.1em] text-foreground md:text-xl">{hud.weapon}</div>
+            <div className="font-display text-2xl text-foreground md:text-4xl">
               {hud.ammo}
-              <span className="text-lg text-muted-foreground"> / {hud.reserve}</span>
+              <span className="text-sm text-muted-foreground md:text-lg"> / {hud.reserve}</span>
             </div>
             {hud.reloading && <div className="text-[11px] uppercase tracking-[0.3em] text-primary">Reloading…</div>}
           </div>
@@ -141,7 +141,7 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
 function BuyMenu({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
   return (
     <div
-      className="pointer-events-auto absolute bottom-44 left-1/2 flex max-w-[95vw] -translate-x-1/2 flex-wrap justify-center gap-2 md:bottom-28 md:flex-nowrap"
+      className="pointer-events-auto absolute inset-x-0 top-20 flex gap-2 overflow-x-auto px-3 pb-1 md:inset-x-auto md:bottom-28 md:left-1/2 md:top-auto md:-translate-x-1/2 md:justify-center md:overflow-visible md:px-0"
       data-buy
     >
       {ROUND_SHOP.map((item) => (
@@ -149,7 +149,7 @@ function BuyMenu({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void })
           key={item.id}
           onClick={() => onBuy(item.id)}
           disabled={hud.cash < item.price}
-          className="w-32 rounded border border-hud-line bg-hud-panel px-3 py-2 text-left transition hover:border-primary disabled:opacity-35"
+          className="w-28 shrink-0 rounded border border-hud-line bg-hud-panel px-3 py-2 text-left transition hover:border-primary disabled:opacity-35 md:w-32"
         >
           <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-foreground">{item.label}</div>
           <div className="mt-0.5 text-[10px] text-muted-foreground">{item.detail}</div>

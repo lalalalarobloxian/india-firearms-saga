@@ -164,6 +164,27 @@ interface Particle {
 
 const ARENA = 62;
 
+/** Per-map arena layout so no two theatres are shaped alike. */
+interface Layout {
+  walls: "full" | "low" | "partial" | "none";
+  bastions: boolean;
+  pavilion: boolean;
+  cover: number;
+  /** spawn ring radius factor */
+  ring: number;
+}
+
+const LAYOUTS: Record<string, Layout> = {
+  amber: { walls: "full", bastions: true, pavilion: true, cover: 22, ring: 0.9 },
+  jhansi: { walls: "full", bastions: true, pavilion: false, cover: 18, ring: 0.85 },
+  redfort: { walls: "full", bastions: false, pavilion: true, cover: 14, ring: 0.92 },
+  siachen: { walls: "none", bastions: false, pavilion: false, cover: 24, ring: 1 },
+  thal: { walls: "low", bastions: false, pavilion: false, cover: 30, ring: 1 },
+  kerala: { walls: "none", bastions: false, pavilion: false, cover: 16, ring: 0.95 },
+  konark: { walls: "low", bastions: false, pavilion: false, cover: 12, ring: 0.95 },
+  andaman: { walls: "partial", bastions: true, pavilion: false, cover: 20, ring: 1 },
+};
+
 /* ------------------------------------------------------------------ */
 /*  Audio                                                              */
 /* ------------------------------------------------------------------ */

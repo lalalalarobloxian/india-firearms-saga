@@ -523,19 +523,31 @@ export class Game {
     const accentMat = new THREE.MeshStandardMaterial({ color: m.accent, roughness: 0.6, metalness: 0.25 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x30323a, roughness: 0.75, metalness: 0.2 });
 
-    // perimeter walls with merlons
+    const layout = LAYOUTS[m.id] ?? LAYOUTS["amber"]!;
     const half = ARENA / 2;
-    const wallH = 9;
-    for (const [dx, dz] of [
-      [0, -half],
-      [0, half],
-      [-half, 0],
-      [half, 0],
-    ] as [number, number][]) {
+
+    // perimeter walls with merlons (shape depends on the theatre)
+    const wallH = layout.walls === "low" ? 2.6 : 9;
+    const sides: [number, number][] =
+      layout.walls === "none"
+        ? []
+        : layout.walls === "partial"
+          ? [
+              [0, -half],
+              [-half, 0],
+            ]
+          : [
+              [0, -half],
+              [0, half],
+              [-half, 0],
+              [half, 0],
+            ];
+    for (const [dx, dz] of sides) {
       const horizontal = dz !== 0;
       const w = horizontal ? ARENA + 4 : 3;
       const d = horizontal ? 3 : ARENA + 4;
       this.addBox(w, wallH, d, dx, wallH / 2, dz, stoneMat);
+      if (layout.walls === "low") continue;
       const count = 14;
       for (let i = 0; i <= count; i++) {
         const t = (i / count - 0.5) * ARENA;
@@ -553,12 +565,12 @@ export class Game {
     }
 
     // corner bastions
-    for (const [sx, sz] of [
+    for (const [sx, sz] of (layout.bastions ? [
       [-1, -1],
       [1, -1],
       [-1, 1],
       [1, 1],
-    ] as [number, number][]) {
+    ] : []) as [number, number][]) {
       const x = sx * (half - 3);
       const z = sz * (half - 3);
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 5, 13, 18), stoneMat);
@@ -576,30 +588,32 @@ export class Game {
       this.worldGroup.add(finial);
     }
 
-    // central pavilion (all themes) — pillars + roof, gives vertical play
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const px = Math.cos(a) * 8;
-      const pz = Math.sin(a) * 8;
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 6.5, 12), stoneMat);
-      pillar.position.set(px, 3.25, pz);
-      pillar.castShadow = true;
-      this.worldGroup.add(pillar);
-      this.colliders.push({
-        box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(px, 3.25, pz), new THREE.Vector3(1.4, 6.5, 1.4)),
-      });
+    // central pavilion — pillars + roof, gives vertical play
+    if (layout.pavilion) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const px = Math.cos(a) * 8;
+        const pz = Math.sin(a) * 8;
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 6.5, 12), stoneMat);
+        pillar.position.set(px, 3.25, pz);
+        pillar.castShadow = true;
+        this.worldGroup.add(pillar);
+        this.colliders.push({
+          box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(px, 3.25, pz), new THREE.Vector3(1.4, 6.5, 1.4)),
+        });
+      }
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 11.5, 1.1, 8), stoneMat);
+      roof.position.y = 7.1;
+      roof.castShadow = roof.receiveShadow = true;
+      this.worldGroup.add(roof);
+      const cupola = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), accentMat);
+      cupola.position.y = 7.6;
+      this.worldGroup.add(cupola);
     }
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 11.5, 1.1, 8), stoneMat);
-    roof.position.y = 7.1;
-    roof.castShadow = roof.receiveShadow = true;
-    this.worldGroup.add(roof);
-    const cupola = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), accentMat);
-    cupola.position.y = 7.6;
-    this.worldGroup.add(cupola);
 
     // scattered cover crates / sandbags / rocks
     const coverMat = m.theme === "snow" || m.theme === "desert" ? darkMat : accentMat;
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < layout.cover; i++) {
       const a = Math.random() * Math.PI * 2;
       const r = rand(14, half - 6);
       const x = Math.cos(a) * r;
@@ -609,12 +623,14 @@ export class Game {
     }
 
     this.buildTheme(m, stoneMat, accentMat, darkMat);
+    this.buildLandmarks(m, stoneMat, accentMat, darkMat);
 
     // spawn points around the ring
     this.spawnPoints = [];
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
-      this.spawnPoints.push(new THREE.Vector3(Math.cos(a) * (half - 6), 0, Math.sin(a) * (half - 6)));
+      const r = (half - 6) * layout.ring;
+      this.spawnPoints.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
     }
 
     // atmosphere

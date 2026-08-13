@@ -5,6 +5,7 @@ import { MISSIONS } from "@/game/missions";
 import { DEFAULT_SETTINGS, getProfile, getUnlocked, purchaseItem, saveSettings, type GameSettings } from "@/game/economy";
 import { Multiplayer, randomRoomCode, type LobbyMember } from "@/game/multiplayer";
 import { Hud } from "./Hud";
+import { TouchControls } from "./TouchControls";
 
 const CONTROLS: [string, string][] = [
   ["W A S D", "Move"],
@@ -20,12 +21,25 @@ const CONTROLS: [string, string][] = [
   ["Esc", "Release mouse"],
 ];
 
+const PAD_CONTROLS: [string, string][] = [
+  ["Left stick", "Move (push to sprint)"],
+  ["Right stick", "Look"],
+  ["RT / LT", "Fire / aim"],
+  ["A / X", "Jump / reload"],
+  ["B / Y", "Melee / grenade"],
+  ["LB / RB", "Cycle weapons"],
+  ["Left stick click", "Crouch"],
+];
+
+const MENU_MUSIC = "/audio/gamestartup.mp3";
+
 type Tab = "deploy" | "armoury" | "squad" | "settings";
 
 export default function FpsGame() {
   const mount = useRef<HTMLDivElement>(null);
   const game = useRef<Game | null>(null);
   const net = useRef<Multiplayer | null>(null);
+  const music = useRef<HTMLAudioElement | null>(null);
   const [hud, setHud] = useState<HudState | null>(null);
   const [tab, setTab] = useState<Tab>("deploy");
   const [mapId, setMapId] = useState(MAPS[0]!.id);
@@ -44,7 +58,15 @@ export default function FpsGame() {
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const isTouch = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window),
+    [],
+  );
+
   const onHud = useCallback((s: HudState) => setHud(s), []);
+  const getGame = useCallback(() => game.current, []);
 
   const refresh = useCallback(async () => {
     const [profile, unlocks] = await Promise.all([getProfile(), getUnlocked()]);
@@ -76,8 +98,9 @@ export default function FpsGame() {
     const g = new Game(mount.current, opts, onHud);
     game.current = g;
     if (net.current) net.current["opts"].onEvent = (e) => g.handleNetEvent(e);
-    g.lock();
-    const onLockChange = () => setLocked(document.pointerLockElement !== null);
+    if (isTouch) setLocked(true);
+    else g.lock();
+    const onLockChange = () => setLocked(isTouch || document.pointerLockElement !== null);
     document.addEventListener("pointerlockchange", onLockChange);
     return () => {
       document.removeEventListener("pointerlockchange", onLockChange);
@@ -87,6 +110,32 @@ export default function FpsGame() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started]);
+
+  /* menu music — the startup track loops on the menu and fades out on deploy */
+  useEffect(() => {
+    if (!music.current) {
+      const el = new window.Audio(MENU_MUSIC);
+      el.loop = true;
+      music.current = el;
+    }
+    const el = music.current;
+    el.volume = Math.min(1, settings.masterVolume * 0.6);
+    if (started) {
+      el.pause();
+      el.currentTime = 0;
+      return;
+    }
+    const play = () => void el.play().catch(() => undefined);
+    play();
+    window.addEventListener("pointerdown", play, { once: true });
+    window.addEventListener("keydown", play, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", play);
+      window.removeEventListener("keydown", play);
+    };
+  }, [started, settings.masterVolume]);
+
+  useEffect(() => () => music.current?.pause(), []);
 
   const map = useMemo(
     () => MAPS.find((m) => m.id === (mode === "mission" ? MISSIONS.find((x) => x.id === missionId)?.mapId : mapId)) ?? MAPS[0]!,
@@ -134,6 +183,7 @@ export default function FpsGame() {
     <div className="relative h-[100svh] w-full overflow-hidden bg-background">
       <div ref={mount} className="absolute inset-0" />
       {hud && started && <Hud hud={hud} onBuy={(id) => game.current?.buy(id)} />}
+      {hud && started && isTouch && <TouchControls getGame={getGame} hud={hud} />}
 
       {started && !locked && !hud?.dead && !hud?.won && (
         <button

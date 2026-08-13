@@ -1625,7 +1625,7 @@ export class Game {
     this.score += head ? 150 : 100;
     const gain = e.reward * (this.character.ability === "double_currency" ? 1 + this.character.abilityValue : 1);
     this.cash += Math.round(gain);
-    this.earned += Math.round(gain * 0.4);
+    this.earned += Math.round(gain * 0.5);
     this.waveEnemiesLeft = Math.max(0, this.waveEnemiesLeft - 1);
     this.pushFeed(`${this.playerName} ▸ ${e.name}`, head);
     this.net?.sendEvent({ type: "kill", name: this.playerName, target: e.name, head } as Omit<NetEvent, "from">);
@@ -1680,6 +1680,7 @@ export class Game {
       return;
     }
     this.cash += 300 + this.wave * 60;
+    this.earned += 120 + this.wave * 25;
     this.buyPhase = true;
     this.buyTimer = 15;
     this.banner = "WAVE CLEARED · PRESS B TO BUY";
@@ -2257,6 +2258,9 @@ export class Game {
     this.score = 0;
     this.cash = 800;
     this.earned = 0;
+    this.banked = 0;
+    this.bankedKills = 0;
+    this.bankedWaves = 0;
     this.killfeed = [];
     this.buyPhase = true;
     this.buyTimer = 8;

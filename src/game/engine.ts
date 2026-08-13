@@ -1135,6 +1135,109 @@ export class Game {
     void this.renderer.domElement.requestPointerLock?.();
   }
 
+  /* ---------------- touch + controller API ---------------------------- */
+
+  /** left virtual stick / gamepad left stick, values -1..1 */
+  setMoveAxis(x: number, y: number) {
+    this.axisX = clamp(x, -1, 1);
+    this.axisY = clamp(y, -1, 1);
+    this.sprintHeld = Math.hypot(x, y) > 0.85;
+  }
+
+  /** touch look pad / right stick — pixels or scaled units */
+  lookDelta(dx: number, dy: number) {
+    const sens = 0.0045 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.weapon.zoom) : 1);
+    this.yaw -= dx * sens;
+    this.pitch = clamp(this.pitch - dy * sens, -1.5, 1.5);
+  }
+
+  setFire(down: boolean) {
+    if (this.buyOpen) return;
+    if (!down && this.mouseDown && this.weapon.category === "grenade" && this.throwCharge > 0) {
+      this.throwGrenade();
+    }
+    this.mouseDown = down;
+  }
+
+  setAds(down: boolean) {
+    this.ads = down && this.weapon.category !== "grenade";
+  }
+
+  setCrouch(down: boolean) {
+    this.crouchHeld = down;
+  }
+
+  jump() {
+    if (this.onGround && !this.dead) {
+      this.vel.y = 7.4;
+      this.onGround = false;
+    }
+  }
+
+  reloadNow() {
+    this.startReload();
+  }
+
+  cycleWeapon(dir: number) {
+    this.selectWeapon((this.wIndex + dir + this.weapons.length) % this.weapons.length);
+  }
+
+  selectSlot(i: number) {
+    if (i >= 0 && i < this.weapons.length) this.selectWeapon(i);
+  }
+
+  equipCategory(cat: "grenade" | "melee") {
+    const i = this.weapons.findIndex((w) => w.category === cat);
+    if (i >= 0) this.selectWeapon(i);
+  }
+
+  get hasController() {
+    return this.padConnected;
+  }
+
+  private padButton(gp: Gamepad, index: number) {
+    const pressed = !!gp.buttons[index]?.pressed;
+    const was = this.padPrev.get(index) ?? false;
+    this.padPrev.set(index, pressed);
+    return { pressed, justPressed: pressed && !was };
+  }
+
+  private updateGamepad(dt: number) {
+    const pads = navigator.getGamepads?.() ?? [];
+    const gp = Array.from(pads).find((p): p is Gamepad => !!p && p.connected);
+    this.padConnected = !!gp;
+    if (!gp || this.buyOpen || this.dead) return;
+
+    const dead = (v: number) => (Math.abs(v) < 0.18 ? 0 : v);
+    const lx = dead(gp.axes[0] ?? 0);
+    const ly = dead(gp.axes[1] ?? 0);
+    if (lx || ly) this.setMoveAxis(lx, ly);
+    else if (!this.touchActive) this.setMoveAxis(0, 0);
+
+    const rx = dead(gp.axes[2] ?? 0);
+    const ry = dead(gp.axes[3] ?? 0);
+    if (rx || ry) {
+      const speed = 260 * dt * (this.ads ? 0.55 : 1);
+      this.lookDelta(rx * speed, ry * speed);
+    }
+
+    const rt = (gp.buttons[7]?.value ?? 0) > 0.35 || !!gp.buttons[7]?.pressed;
+    const lt = (gp.buttons[6]?.value ?? 0) > 0.35 || !!gp.buttons[6]?.pressed;
+    this.setFire(rt);
+    this.setAds(lt);
+
+    if (this.padButton(gp, 0).justPressed) this.jump();
+    if (this.padButton(gp, 2).justPressed) this.reloadNow();
+    if (this.padButton(gp, 1).justPressed) this.equipCategory("melee");
+    if (this.padButton(gp, 3).justPressed) this.equipCategory("grenade");
+    if (this.padButton(gp, 5).justPressed) this.cycleWeapon(1);
+    if (this.padButton(gp, 4).justPressed) this.cycleWeapon(-1);
+    this.setCrouch(!!gp.buttons[10]?.pressed);
+  }
+
+  /** true while a finger owns the movement stick, so the pad doesn't fight it */
+  touchActive = false;
+
   private selectWeapon(i: number) {
     if (i === this.wIndex || this.dead) return;
     this.wIndex = i;

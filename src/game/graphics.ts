@@ -229,7 +229,7 @@ export function createGodRays(color: number, position: THREE.Vector3): THREE.Gro
   const mat = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity: 0.06,
+    opacity: 0.022,
     side: THREE.DoubleSide,
     depthWrite: false,
     blending: THREE.AdditiveBlending,

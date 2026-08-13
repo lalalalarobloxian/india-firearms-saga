@@ -95,7 +95,7 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
       )}
 
       {/* bottom bar */}
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between px-3 pb-48 md:px-6 md:pb-5">
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between px-3 pb-60 md:px-6 md:pb-5">
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
             <span>HP</span>

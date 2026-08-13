@@ -140,7 +140,10 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
 
 function BuyMenu({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
   return (
-    <div className="pointer-events-auto absolute bottom-28 left-1/2 hidden -translate-x-1/2 gap-2 md:flex" data-buy>
+    <div
+      className="pointer-events-auto absolute bottom-44 left-1/2 flex max-w-[95vw] -translate-x-1/2 flex-wrap justify-center gap-2 md:bottom-28 md:flex-nowrap"
+      data-buy
+    >
       {ROUND_SHOP.map((item) => (
         <button
           key={item.id}

@@ -333,13 +333,18 @@ export default function FpsGame() {
                   <div>
                     <h2 className="mb-3 text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Controls</h2>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-3">
-                      {CONTROLS.map(([k, v]) => (
+                      {(isTouch ? PAD_CONTROLS : CONTROLS).map(([k, v]) => (
                         <div key={k} className="flex items-center justify-between gap-3 border-b border-hud-line pb-1.5">
                           <span className="font-mono text-xs text-primary">{k}</span>
                           <span className="text-muted-foreground">{v}</span>
                         </div>
                       ))}
                     </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {isTouch
+                        ? "On-screen sticks and buttons appear once you deploy. Pair a Bluetooth controller for full gamepad play."
+                        : "Gamepads work too: left stick move, right stick look, RT fire, LT aim, A jump, X reload, B melee, Y grenade, bumpers to switch."}
+                    </p>
                   </div>
                   <button
                     onClick={() => {
@@ -545,7 +550,7 @@ export default function FpsGame() {
             )}
 
             <p className="pb-4 text-center text-[11px] text-muted-foreground">
-              Desktop, mouse + keyboard. Best played fullscreen with sound on.
+              Plays on desktop (mouse + keyboard), phones and tablets (touch sticks) and gamepads. Best fullscreen with sound on.
             </p>
           </div>
         </div>

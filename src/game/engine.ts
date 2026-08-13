@@ -387,6 +387,13 @@ export class Game {
   private keys = new Set<string>();
   private mouseDown = false;
   private rightDown = false;
+  /** virtual axes fed by touch sticks / gamepad (-1..1) */
+  private axisX = 0;
+  private axisY = 0;
+  private sprintHeld = false;
+  private crouchHeld = false;
+  private padPrev = new Map<number, boolean>();
+  private padConnected = false;
   private disposed = false;
   private frames = 0;
   private fpsTime = 0;

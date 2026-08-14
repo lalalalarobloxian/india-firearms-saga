@@ -366,7 +366,7 @@ export default function FpsGame() {
                   <div>
                     <h2 className="mb-3 text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Controls</h2>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-3">
-                      {(isTouch ? PAD_CONTROLS : CONTROLS).map(([k, v]) => (
+                      {(touchUi || padMode ? PAD_CONTROLS : CONTROLS).map(([k, v]) => (
                         <div key={k} className="flex items-center justify-between gap-3 border-b border-hud-line pb-1.5">
                           <span className="font-mono text-xs text-primary">{k}</span>
                           <span className="text-muted-foreground">{v}</span>
@@ -374,10 +374,16 @@ export default function FpsGame() {
                       ))}
                     </div>
                     <p className="mt-3 text-xs text-muted-foreground">
-                      {isTouch
+                      {touchUi
                         ? "On-screen sticks and buttons appear once you deploy. Pair a Bluetooth controller for full gamepad play."
                         : "Gamepads work too: left stick move, right stick look, RT fire, LT aim, A jump, X reload, B melee, Y grenade, bumpers to switch."}
                     </p>
+                    <button
+                      onClick={() => setTouchUi((v) => !v)}
+                      className="mt-3 rounded border border-hud-line px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground"
+                    >
+                      On-screen controls: {touchUi ? "on" : "off"}
+                    </button>
                   </div>
                   <button
                     onClick={() => {

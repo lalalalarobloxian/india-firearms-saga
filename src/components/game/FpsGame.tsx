@@ -56,6 +56,7 @@ export default function FpsGame() {
   const [room, setRoom] = useState(randomRoomCode());
   const [lobby, setLobby] = useState<LobbyMember[]>([]);
   const [connected, setConnected] = useState(false);
+  const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [touchUi, setTouchUi] = useState(false);
@@ -185,6 +186,7 @@ export default function FpsGame() {
 
   const joinRoom = async () => {
     if (net.current) await net.current.leave();
+    setReady(false);
     const mp = new Multiplayer({
       room,
       name,
@@ -200,15 +202,23 @@ export default function FpsGame() {
     });
     net.current = mp;
     await mp.join();
-    setConnected(true);
+    setConnected(mp.connected);
   };
 
   const leaveRoom = async () => {
     await net.current?.leave();
     net.current = null;
     setConnected(false);
+    setReady(false);
     setLobby([]);
   };
+
+  /** keep the lobby roster in sync with the fighter chosen in the armoury */
+  useEffect(() => {
+    net.current?.setCharacter(characterId);
+  }, [characterId]);
+
+  const isHost = !connected || (lobby.find((m) => m.id === net.current?.id)?.host ?? true);
 
   useEffect(() => () => void net.current?.leave(), []);
 
@@ -388,10 +398,12 @@ export default function FpsGame() {
                   <button
                     onClick={() => {
                       if (net.current) {
-                        if (net.current.isHost) {
+                        if (isHost) {
                           net.current.startMatch(mapId, missionId, mode);
                         } else {
-                          setStarted(true);
+                          const next = !ready;
+                          setReady(next);
+                          net.current.setReady(next);
                         }
                       } else {
                         setStarted(true);
@@ -399,7 +411,7 @@ export default function FpsGame() {
                     }}
                     className="w-full rounded-md bg-primary px-10 py-5 font-display text-xl tracking-[0.25em] text-primary-foreground md:w-auto"
                   >
-                    {connected && lobby.length > 1 && !lobby.find((m) => m.id === net.current?.id)?.host ? "READY" : "DEPLOY"}
+                    {connected && !isHost ? (ready ? "WAITING FOR HOST" : "READY UP") : "DEPLOY"}
                   </button>
                 </section>
               </>

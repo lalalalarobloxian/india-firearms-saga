@@ -509,13 +509,13 @@ export default function FpsGame() {
                 </div>
                 <div className="rounded-lg border border-hud-line bg-hud-panel p-4">
                   <div className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-                    {connected ? `In room ${room}` : "Not connected"}
+                    {connected ? `In room ${room} · ${isHost ? "you are host" : "host controls launch"}` : "Not connected"}
                   </div>
                   <ul className="mt-3 space-y-1 text-sm text-foreground">
                     {lobby.map((m) => (
                       <li key={m.id} className="flex justify-between">
                         <span>
-                          {m.name} {m.host ? "· host" : ""}
+                          {m.name} {m.host ? "· host" : m.ready ? "· ready" : "· standby"}
                         </span>
                         <span className="text-muted-foreground">
                           {CHARACTERS.find((c) => c.id === m.character)?.name ?? m.character}

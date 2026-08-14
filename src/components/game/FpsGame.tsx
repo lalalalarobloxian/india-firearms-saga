@@ -58,12 +58,39 @@ export default function FpsGame() {
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const isTouch = useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window),
-    [],
-  );
+  const [touchUi, setTouchUi] = useState(false);
+  const [padMode, setPadMode] = useState(false);
+
+  /**
+   * Input detection. Smart boards / large Android panels often report a fine
+   * pointer even though they are touch-only, so we look at maxTouchPoints too
+   * and flip on the on-screen controls the first time a touch/pen event lands.
+   */
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const touchPoints = (navigator.maxTouchPoints ?? 0) > 0 || "ontouchstart" in window;
+    if (coarse || touchPoints) setTouchUi(true);
+
+    const onPointer = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || e.pointerType === "pen") setTouchUi(true);
+    };
+    const onTouch = () => setTouchUi(true);
+    const onPad = () => setPadMode(true);
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("touchstart", onTouch, { capture: true, passive: true });
+    window.addEventListener("gamepadconnected", onPad);
+    if (Array.from(navigator.getGamepads?.() ?? []).some((p) => p?.connected)) setPadMode(true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("touchstart", onTouch, true);
+      window.removeEventListener("gamepadconnected", onPad);
+    };
+  }, []);
+
+  /** touch + gamepad play never needs pointer lock, so never show the pause veil */
+  useEffect(() => {
+    if (started && (touchUi || padMode)) setLocked(true);
+  }, [started, touchUi, padMode]);
 
   const onHud = useCallback((s: HudState) => setHud(s), []);
   const getGame = useCallback(() => game.current, []);
@@ -98,9 +125,10 @@ export default function FpsGame() {
     const g = new Game(mount.current, opts, onHud);
     game.current = g;
     if (net.current) net.current.setOnEvent((e) => g.handleNetEvent(e));
-    if (isTouch) setLocked(true);
+    if (touchUi || padMode) setLocked(true);
     else g.lock();
-    const onLockChange = () => setLocked(isTouch || document.pointerLockElement !== null);
+    const onLockChange = () =>
+      setLocked(touchUi || padMode || document.pointerLockElement !== null);
     document.addEventListener("pointerlockchange", onLockChange);
     return () => {
       document.removeEventListener("pointerlockchange", onLockChange);
@@ -188,7 +216,7 @@ export default function FpsGame() {
     <div className="relative h-[100svh] w-full overflow-hidden bg-background">
       <div ref={mount} className="absolute inset-0" />
       {hud && started && <Hud hud={hud} onBuy={(id) => game.current?.buy(id)} />}
-      {hud && started && isTouch && <TouchControls getGame={getGame} hud={hud} />}
+      {hud && started && touchUi && <TouchControls getGame={getGame} hud={hud} />}
 
       {started && !locked && !hud?.dead && !hud?.won && (
         <button

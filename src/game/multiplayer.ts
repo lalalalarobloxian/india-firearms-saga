@@ -76,6 +76,10 @@ export class Multiplayer {
   private joinedAt = Date.now();
   private lastSend = 0;
   private ready = false;
+  private rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+  private left = false;
+  /** last connection error, surfaced in the lobby UI */
+  error: string | null = null;
 
   /** latest known state of every remote player */
   peers = new Map<string, PeerState>();
@@ -147,22 +151,54 @@ export class Multiplayer {
     });
 
     await new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           this.connected = true;
+          this.error = null;
           void channel.track({
             name: this.name,
             character: this.opts.character,
             ready: this.ready,
             joinedAt: this.joinedAt,
           });
-          resolve();
+          settle();
+          return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           this.connected = false;
+          this.error = status;
+          // never leave join() hanging, and retry in the background
+          settle();
+          this.scheduleRejoin();
         }
       });
+      // hard timeout so the UI can't spin forever on a dead network
+      setTimeout(settle, 8000);
     });
+  }
+
+  private scheduleRejoin() {
+    if (this.left || this.rejoinTimer) return;
+    this.rejoinTimer = setTimeout(() => {
+      this.rejoinTimer = null;
+      if (this.left || this.connected) return;
+      void (async () => {
+        try {
+          if (this.channel) await supabase.removeChannel(this.channel);
+          this.channel = null;
+          await this.join();
+        } catch {
+          this.scheduleRejoin();
+        }
+      })();
+    }, 2500);
   }
 
   setReady(ready: boolean) {
@@ -226,6 +262,13 @@ export class Multiplayer {
 
   async leave() {
     this.connected = false;
+    this.left = true;
+    if (this.rejoinTimer) {
+      clearTimeout(this.rejoinTimer);
+      this.rejoinTimer = null;
+    }
+    this.peers.clear();
+    this.members = [];
     if (this.channel) {
       await supabase.removeChannel(this.channel);
       this.channel = null;

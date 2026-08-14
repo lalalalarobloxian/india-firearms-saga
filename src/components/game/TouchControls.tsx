@@ -88,8 +88,28 @@ export function TouchControls({ getGame, hud }: Props) {
   const btn =
     "pointer-events-auto flex items-center justify-center rounded-full border border-hud-line bg-hud-panel/80 text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground backdrop-blur-sm active:border-primary active:text-primary";
 
+  /**
+   * Held buttons capture the pointer so sliding a finger off the button still
+   * releases the input (otherwise fire/aim/crouch could stick on).
+   */
+  const hold = (on: () => void, off: () => void) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        /* capture unsupported — plain up/cancel still releases */
+      }
+      on();
+    },
+    onPointerUp: off,
+    onPointerCancel: off,
+    onLostPointerCapture: off,
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  });
+
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 select-none touch-none md:hidden">
+    <div className="pointer-events-none absolute inset-0 z-20 select-none touch-none">
       {/* look surface */}
       <div
         className="pointer-events-auto absolute inset-y-0 right-0 left-1/3"
@@ -119,9 +139,10 @@ export function TouchControls({ getGame, hud }: Props) {
         <div className="flex gap-3">
           <button
             className={`${btn} h-12 w-12`}
-            onPointerDown={() => getGame()?.setCrouch(true)}
-            onPointerUp={() => getGame()?.setCrouch(false)}
-            onPointerCancel={() => getGame()?.setCrouch(false)}
+            {...hold(
+              () => getGame()?.setCrouch(true),
+              () => getGame()?.setCrouch(false),
+            )}
           >
             Duck
           </button>
@@ -147,20 +168,19 @@ export function TouchControls({ getGame, hud }: Props) {
           </button>
           <button
             className={`${btn} h-16 w-16`}
-            onPointerDown={() => getGame()?.setAds(true)}
-            onPointerUp={() => getGame()?.setAds(false)}
-            onPointerCancel={() => getGame()?.setAds(false)}
+            {...hold(
+              () => getGame()?.setAds(true),
+              () => getGame()?.setAds(false),
+            )}
           >
             Aim
           </button>
           <button
             className={`${btn} h-20 w-20 border-primary/70 bg-primary/25 text-xs`}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              getGame()?.setFire(true);
-            }}
-            onPointerUp={() => getGame()?.setFire(false)}
-            onPointerCancel={() => getGame()?.setFire(false)}
+            {...hold(
+              () => getGame()?.setFire(true),
+              () => getGame()?.setFire(false),
+            )}
           >
             Fire
           </button>

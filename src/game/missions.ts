@@ -124,6 +124,45 @@ export const MISSIONS: MissionDef[] = [
     difficulty: 1.1,
     reward: 950,
   },
+  {
+    id: "rezangla",
+    name: "Last Stand at Rezang La",
+    year: "18 November 1962",
+    mapId: "siachen",
+    objective: "Hold Charlie Company's post at 16,000 ft — 9 waves",
+    brief:
+      "Major Shaitan Singh and 13 Kumaon against wave after wave in the frozen Chushul valley. No artillery cover, no retreat, ammunition counted round by round.",
+    waves: 9,
+    faction: "Valley Assault",
+    difficulty: 1.4,
+    reward: 1700,
+  },
+  {
+    id: "haifa1918",
+    name: "Charge at Haifa",
+    year: "23 September 1918",
+    mapId: "thal",
+    objective: "Break the ridge guns and take the town — 6 waves",
+    brief:
+      "Jodhpur and Mysore Lancers ride down machine-gun nests on the slopes of Mount Carmel. Fast, aggressive pushes between dune lines.",
+    waves: 6,
+    faction: "Ridge Battery",
+    difficulty: 1.2,
+    reward: 1100,
+  },
+  {
+    id: "panipat1761",
+    name: "Third Battle of Panipat",
+    year: "14 January 1761",
+    mapId: "amber",
+    objective: "Hold the Maratha centre — 7 waves",
+    brief:
+      "Cannon, camel-gun and cavalry across a dust-choked plain. Discipline in the line decides whether the centre holds.",
+    waves: 7,
+    faction: "Durrani Host",
+    difficulty: 1.3,
+    reward: 1300,
+  },
 ];
 
 export const SURVIVAL: MissionDef = {

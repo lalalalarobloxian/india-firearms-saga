@@ -56,14 +56,42 @@ export default function FpsGame() {
   const [room, setRoom] = useState(randomRoomCode());
   const [lobby, setLobby] = useState<LobbyMember[]>([]);
   const [connected, setConnected] = useState(false);
+  const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const isTouch = useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window),
-    [],
-  );
+  const [touchUi, setTouchUi] = useState(false);
+  const [padMode, setPadMode] = useState(false);
+
+  /**
+   * Input detection. Smart boards / large Android panels often report a fine
+   * pointer even though they are touch-only, so we look at maxTouchPoints too
+   * and flip on the on-screen controls the first time a touch/pen event lands.
+   */
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const touchPoints = (navigator.maxTouchPoints ?? 0) > 0 || "ontouchstart" in window;
+    if (coarse || touchPoints) setTouchUi(true);
+
+    const onPointer = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || e.pointerType === "pen") setTouchUi(true);
+    };
+    const onTouch = () => setTouchUi(true);
+    const onPad = () => setPadMode(true);
+    window.addEventListener("pointerdown", onPointer, true);
+    window.addEventListener("touchstart", onTouch, { capture: true, passive: true });
+    window.addEventListener("gamepadconnected", onPad);
+    if (Array.from(navigator.getGamepads?.() ?? []).some((p) => p?.connected)) setPadMode(true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("touchstart", onTouch, true);
+      window.removeEventListener("gamepadconnected", onPad);
+    };
+  }, []);
+
+  /** touch + gamepad play never needs pointer lock, so never show the pause veil */
+  useEffect(() => {
+    if (started && (touchUi || padMode)) setLocked(true);
+  }, [started, touchUi, padMode]);
 
   const onHud = useCallback((s: HudState) => setHud(s), []);
   const getGame = useCallback(() => game.current, []);
@@ -98,9 +126,10 @@ export default function FpsGame() {
     const g = new Game(mount.current, opts, onHud);
     game.current = g;
     if (net.current) net.current.setOnEvent((e) => g.handleNetEvent(e));
-    if (isTouch) setLocked(true);
+    if (touchUi || padMode) setLocked(true);
     else g.lock();
-    const onLockChange = () => setLocked(isTouch || document.pointerLockElement !== null);
+    const onLockChange = () =>
+      setLocked(touchUi || padMode || document.pointerLockElement !== null);
     document.addEventListener("pointerlockchange", onLockChange);
     return () => {
       document.removeEventListener("pointerlockchange", onLockChange);
@@ -157,6 +186,7 @@ export default function FpsGame() {
 
   const joinRoom = async () => {
     if (net.current) await net.current.leave();
+    setReady(false);
     const mp = new Multiplayer({
       room,
       name,
@@ -172,15 +202,23 @@ export default function FpsGame() {
     });
     net.current = mp;
     await mp.join();
-    setConnected(true);
+    setConnected(mp.connected);
   };
 
   const leaveRoom = async () => {
     await net.current?.leave();
     net.current = null;
     setConnected(false);
+    setReady(false);
     setLobby([]);
   };
+
+  /** keep the lobby roster in sync with the fighter chosen in the armoury */
+  useEffect(() => {
+    net.current?.setCharacter(characterId);
+  }, [characterId]);
+
+  const isHost = !connected || (lobby.find((m) => m.id === net.current?.id)?.host ?? true);
 
   useEffect(() => () => void net.current?.leave(), []);
 
@@ -188,7 +226,7 @@ export default function FpsGame() {
     <div className="relative h-[100svh] w-full overflow-hidden bg-background">
       <div ref={mount} className="absolute inset-0" />
       {hud && started && <Hud hud={hud} onBuy={(id) => game.current?.buy(id)} />}
-      {hud && started && isTouch && <TouchControls getGame={getGame} hud={hud} />}
+      {hud && started && touchUi && <TouchControls getGame={getGame} hud={hud} />}
 
       {started && !locked && !hud?.dead && !hud?.won && (
         <button
@@ -338,7 +376,7 @@ export default function FpsGame() {
                   <div>
                     <h2 className="mb-3 text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Controls</h2>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-3">
-                      {(isTouch ? PAD_CONTROLS : CONTROLS).map(([k, v]) => (
+                      {(touchUi || padMode ? PAD_CONTROLS : CONTROLS).map(([k, v]) => (
                         <div key={k} className="flex items-center justify-between gap-3 border-b border-hud-line pb-1.5">
                           <span className="font-mono text-xs text-primary">{k}</span>
                           <span className="text-muted-foreground">{v}</span>
@@ -346,18 +384,26 @@ export default function FpsGame() {
                       ))}
                     </div>
                     <p className="mt-3 text-xs text-muted-foreground">
-                      {isTouch
+                      {touchUi
                         ? "On-screen sticks and buttons appear once you deploy. Pair a Bluetooth controller for full gamepad play."
                         : "Gamepads work too: left stick move, right stick look, RT fire, LT aim, A jump, X reload, B melee, Y grenade, bumpers to switch."}
                     </p>
+                    <button
+                      onClick={() => setTouchUi((v) => !v)}
+                      className="mt-3 rounded border border-hud-line px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground"
+                    >
+                      On-screen controls: {touchUi ? "on" : "off"}
+                    </button>
                   </div>
                   <button
                     onClick={() => {
                       if (net.current) {
-                        if (net.current.isHost) {
+                        if (isHost) {
                           net.current.startMatch(mapId, missionId, mode);
                         } else {
-                          setStarted(true);
+                          const next = !ready;
+                          setReady(next);
+                          net.current.setReady(next);
                         }
                       } else {
                         setStarted(true);
@@ -365,7 +411,7 @@ export default function FpsGame() {
                     }}
                     className="w-full rounded-md bg-primary px-10 py-5 font-display text-xl tracking-[0.25em] text-primary-foreground md:w-auto"
                   >
-                    {connected && lobby.length > 1 && !lobby.find((m) => m.id === net.current?.id)?.host ? "READY" : "DEPLOY"}
+                    {connected && !isHost ? (ready ? "WAITING FOR HOST" : "READY UP") : "DEPLOY"}
                   </button>
                 </section>
               </>
@@ -463,13 +509,13 @@ export default function FpsGame() {
                 </div>
                 <div className="rounded-lg border border-hud-line bg-hud-panel p-4">
                   <div className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-                    {connected ? `In room ${room}` : "Not connected"}
+                    {connected ? `In room ${room} · ${isHost ? "you are host" : "host controls launch"}` : "Not connected"}
                   </div>
                   <ul className="mt-3 space-y-1 text-sm text-foreground">
                     {lobby.map((m) => (
                       <li key={m.id} className="flex justify-between">
                         <span>
-                          {m.name} {m.host ? "· host" : ""}
+                          {m.name} {m.host ? "· host" : m.ready ? "· ready" : "· standby"}
                         </span>
                         <span className="text-muted-foreground">
                           {CHARACTERS.find((c) => c.id === m.character)?.name ?? m.character}

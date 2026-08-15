@@ -2269,6 +2269,20 @@ export class Game {
     this.vel.set(0, 0, 0);
   }
 
+  revive() {
+    if (!this.dead || this.won) return;
+    this.dead = false;
+    this.hp = 55;
+    this.armor = Math.max(this.armor, 25);
+    this.lowHealth = 0;
+    this.finished = false;
+    this.banner = "KNOWLEDGE RESTORES THE FIGHTER";
+    this.bannerUntil = this.time + 3;
+    this.pos.set(0, 1.7, 18);
+    this.vel.set(0, 0, 0);
+    this.emitHud(true);
+  }
+
   dispose() {
     this.disposed = true;
     window.removeEventListener("keydown", this.onKeyDown);

@@ -35,5 +35,7 @@ export const MISSION_STORIES: Record<string, { chapter: string; setup: string; s
 };
 
 export function getReviveQuestion(): HistoryQuestion {
-  return HISTORY_QUESTIONS[Math.floor(Math.random() * HISTORY_QUESTIONS.length)] ?? HISTORY_QUESTIONS[0];
+  const selected = HISTORY_QUESTIONS[Math.floor(Math.random() * HISTORY_QUESTIONS.length)];
+  if (selected) return selected;
+  return { question: "When did India become a republic?", answers: ["1947", "1950", "1952", "1962"], correct: 1, fact: "India became a republic on 26 January 1950." };
 }

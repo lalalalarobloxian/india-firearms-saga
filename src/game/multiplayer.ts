@@ -57,6 +57,7 @@ export interface MultiplayerOptions {
   onLobby?: (members: LobbyMember[]) => void;
   onEvent?: (e: NetEvent) => void;
   onStart?: (payload: StartPayload) => void;
+  onConnection?: (connected: boolean, error: string | null) => void;
 }
 
 export interface StartPayload {
@@ -99,9 +100,24 @@ export class Multiplayer {
   }
 
   async join() {
-    const channel = supabase.channel(`war:${this.room}`, {
-      config: { presence: { key: this.id }, broadcast: { self: false } },
-    });
+    this.left = false;
+    this.error = null;
+    this.opts.onConnection?.(false, null);
+    if (!this.room) {
+      this.error = "Enter a room code";
+      this.opts.onConnection?.(false, this.error);
+      return;
+    }
+    let channel: RealtimeChannel;
+    try {
+      channel = supabase.channel(`war:${this.room}`, {
+        config: { presence: { key: this.id }, broadcast: { self: false, ack: true } },
+      });
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : "Multiplayer service unavailable";
+      this.opts.onConnection?.(false, this.error);
+      return;
+    }
     this.channel = channel;
 
     channel.on("presence", { event: "sync" }, () => {
@@ -162,6 +178,7 @@ export class Multiplayer {
         if (status === "SUBSCRIBED") {
           this.connected = true;
           this.error = null;
+          this.opts.onConnection?.(true, null);
           void channel.track({
             name: this.name,
             character: this.opts.character,
@@ -174,13 +191,20 @@ export class Multiplayer {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           this.connected = false;
           this.error = status;
+          this.opts.onConnection?.(false, status);
           // never leave join() hanging, and retry in the background
           settle();
           this.scheduleRejoin();
         }
       });
       // hard timeout so the UI can't spin forever on a dead network
-      setTimeout(settle, 8000);
+      setTimeout(() => {
+        if (!this.connected && !this.error) {
+          this.error = "Connection timed out — check your network and try again";
+          this.opts.onConnection?.(false, this.error);
+        }
+        settle();
+      }, 8000);
     });
   }
 
@@ -269,6 +293,7 @@ export class Multiplayer {
     }
     this.peers.clear();
     this.members = [];
+    this.opts.onConnection?.(false, null);
     if (this.channel) {
       await supabase.removeChannel(this.channel);
       this.channel = null;

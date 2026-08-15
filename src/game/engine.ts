@@ -1650,7 +1650,6 @@ export class Game {
     if (this.hp <= 0) {
       this.hp = 0;
       this.dead = true;
-      this.finishRun();
       document.exitPointerLock?.();
       this.net?.sendEvent({ type: "down", name: this.playerName } as Omit<NetEvent, "from">);
     }
@@ -2275,12 +2274,15 @@ export class Game {
     this.hp = 55;
     this.armor = Math.max(this.armor, 25);
     this.lowHealth = 0;
-    this.finished = false;
     this.banner = "KNOWLEDGE RESTORES THE FIGHTER";
     this.bannerUntil = this.time + 3;
     this.pos.set(0, 1.7, 18);
     this.vel.set(0, 0, 0);
     this.emitHud(true);
+  }
+
+  finalizeDeath() {
+    if (this.dead && !this.won) this.finishRun();
   }
 
   dispose() {

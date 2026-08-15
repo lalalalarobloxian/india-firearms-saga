@@ -293,7 +293,6 @@ export default function FpsGame() {
                       }, 900);
                     } else {
                       setQuizResult("wrong");
-                      setReviveUsed(true);
                     }
                   }}
                   className="rounded-md border border-hud-line bg-background/60 px-4 py-3 text-left text-sm text-foreground transition hover:border-primary disabled:opacity-60"
@@ -308,7 +307,11 @@ export default function FpsGame() {
               </div>
             )}
             {quizResult === "wrong" && (
-              <button onClick={() => setReviveQuestion(null)} className="mt-5 rounded-md border border-hud-line px-5 py-2 text-xs uppercase tracking-[0.25em] text-foreground">
+              <button onClick={() => {
+                game.current?.finalizeDeath();
+                setReviveUsed(true);
+                setReviveQuestion(null);
+              }} className="mt-5 rounded-md border border-hud-line px-5 py-2 text-xs uppercase tracking-[0.25em] text-foreground">
                 View battle report
               </button>
             )}
@@ -341,6 +344,7 @@ export default function FpsGame() {
           <div className="flex gap-3">
             <button
               onClick={() => {
+                game.current?.finalizeDeath();
                 setReviveUsed(false);
                 setReviveQuestion(null);
                 setQuizResult(null);
@@ -352,7 +356,10 @@ export default function FpsGame() {
               Redeploy
             </button>
             <button
-              onClick={() => setStarted(false)}
+              onClick={() => {
+                game.current?.finalizeDeath();
+                setStarted(false);
+              }}
               className="rounded-md border border-hud-line px-7 py-3 text-sm font-semibold uppercase tracking-[0.25em] text-foreground"
             >
               Base camp

@@ -4,6 +4,7 @@ import { ALL_WEAPONS, CHARACTERS, MAPS, STARTER_CHARACTER_IDS, STARTER_MAP_IDS, 
 import { MISSIONS } from "@/game/missions";
 import { DEFAULT_SETTINGS, getProfile, getUnlocked, purchaseItem, saveSettings, type GameSettings } from "@/game/economy";
 import { Multiplayer, randomRoomCode, type LobbyMember } from "@/game/multiplayer";
+import { getReviveQuestion, MISSION_STORIES, type HistoryQuestion } from "@/game/historyContent";
 import { Hud } from "./Hud";
 import { TouchControls } from "./TouchControls";
 
@@ -58,6 +59,11 @@ export default function FpsGame() {
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [netError, setNetError] = useState<string | null>(null);
+  const [reviveQuestion, setReviveQuestion] = useState<HistoryQuestion | null>(null);
+  const [reviveUsed, setReviveUsed] = useState(false);
+  const [quizResult, setQuizResult] = useState<"correct" | "wrong" | null>(null);
 
   const [touchUi, setTouchUi] = useState(false);
   const [padMode, setPadMode] = useState(false);
@@ -92,6 +98,13 @@ export default function FpsGame() {
   useEffect(() => {
     if (started && (touchUi || padMode)) setLocked(true);
   }, [started, touchUi, padMode]);
+
+  useEffect(() => {
+    if (started && hud?.dead && !hud.won && !reviveUsed && !reviveQuestion) {
+      setReviveQuestion(getReviveQuestion());
+      setQuizResult(null);
+    }
+  }, [hud?.dead, hud?.won, reviveQuestion, reviveUsed, started]);
 
   const onHud = useCallback((s: HudState) => setHud(s), []);
   const getGame = useCallback(() => game.current, []);
@@ -185,6 +198,12 @@ export default function FpsGame() {
   };
 
   const joinRoom = async () => {
+    if (!room.trim() || !name.trim()) {
+      setNetError("Enter a callsign and room code");
+      return;
+    }
+    setJoining(true);
+    setNetError(null);
     if (net.current) await net.current.leave();
     setReady(false);
     const mp = new Multiplayer({
@@ -193,6 +212,11 @@ export default function FpsGame() {
       character: characterId,
       mapId,
       onLobby: setLobby,
+      onConnection: (online, error) => {
+        setConnected(online);
+        setNetError(error);
+        if (online || error) setJoining(false);
+      },
       onStart: (payload) => {
         if (payload.mode) setMode(payload.mode);
         if (payload.mode === "mission" && payload.mission) setMissionId(payload.mission);
@@ -201,8 +225,15 @@ export default function FpsGame() {
       },
     });
     net.current = mp;
-    await mp.join();
-    setConnected(mp.connected);
+    try {
+      await mp.join();
+      setConnected(mp.connected);
+      if (mp.error) setNetError(mp.error);
+    } catch (error) {
+      setNetError(error instanceof Error ? error.message : "Could not join room");
+    } finally {
+      setJoining(false);
+    }
   };
 
   const leaveRoom = async () => {
@@ -211,6 +242,7 @@ export default function FpsGame() {
     setConnected(false);
     setReady(false);
     setLobby([]);
+    setNetError(null);
   };
 
   /** keep the lobby roster in sync with the fighter chosen in the armoury */
@@ -238,7 +270,56 @@ export default function FpsGame() {
         </button>
       )}
 
-      {started && (hud?.dead || hud?.won) && (
+      {started && hud?.dead && !hud.won && reviveQuestion && !reviveUsed && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/90 p-4 backdrop-blur-md">
+          <section className="w-full max-w-2xl rounded-lg border border-primary/50 bg-hud-panel p-5 text-center sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.4em] text-primary">SST History GK · Last chance</p>
+            <h2 className="mt-3 font-display text-2xl text-foreground sm:text-4xl">Answer correctly to revive</h2>
+            <p className="mt-5 text-base text-foreground sm:text-xl">{reviveQuestion.question}</p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {reviveQuestion.answers.map((answer, index) => (
+                <button
+                  key={answer}
+                  disabled={quizResult !== null}
+                  onClick={() => {
+                    if (index === reviveQuestion.correct) {
+                      setQuizResult("correct");
+                      window.setTimeout(() => {
+                        game.current?.revive();
+                        setReviveUsed(true);
+                        setReviveQuestion(null);
+                        setQuizResult(null);
+                        if (!touchUi && !padMode) game.current?.lock();
+                      }, 900);
+                    } else {
+                      setQuizResult("wrong");
+                    }
+                  }}
+                  className="rounded-md border border-hud-line bg-background/60 px-4 py-3 text-left text-sm text-foreground transition hover:border-primary disabled:opacity-60"
+                >
+                  <span className="mr-2 text-primary">{String.fromCharCode(65 + index)}.</span>{answer}
+                </button>
+              ))}
+            </div>
+            {quizResult && (
+              <div className={`mt-5 text-sm ${quizResult === "correct" ? "text-primary" : "text-destructive"}`}>
+                <strong>{quizResult === "correct" ? "Correct — reviving…" : "Incorrect."}</strong> {reviveQuestion.fact}
+              </div>
+            )}
+            {quizResult === "wrong" && (
+              <button onClick={() => {
+                game.current?.finalizeDeath();
+                setReviveUsed(true);
+                setReviveQuestion(null);
+              }} className="mt-5 rounded-md border border-hud-line px-5 py-2 text-xs uppercase tracking-[0.25em] text-foreground">
+                View battle report
+              </button>
+            )}
+          </section>
+        </div>
+      )}
+
+      {started && (hud?.won || (hud?.dead && (!reviveQuestion || reviveUsed))) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-background/85 backdrop-blur-md">
           <h2 className={`font-display text-5xl tracking-[0.18em] ${hud.won ? "text-primary" : "text-destructive"}`}>
             {hud.won ? "OBJECTIVE SECURED" : "THE FORT HAS FALLEN"}
@@ -263,6 +344,10 @@ export default function FpsGame() {
           <div className="flex gap-3">
             <button
               onClick={() => {
+                game.current?.finalizeDeath();
+                setReviveUsed(false);
+                setReviveQuestion(null);
+                setQuizResult(null);
                 game.current?.restart();
                 game.current?.lock();
               }}
@@ -271,7 +356,10 @@ export default function FpsGame() {
               Redeploy
             </button>
             <button
-              onClick={() => setStarted(false)}
+              onClick={() => {
+                game.current?.finalizeDeath();
+                setStarted(false);
+              }}
               className="rounded-md border border-hud-line px-7 py-3 text-sm font-semibold uppercase tracking-[0.25em] text-foreground"
             >
               Base camp
@@ -370,6 +458,15 @@ export default function FpsGame() {
                       );
                     })}
                   </div>
+                )}
+
+                {mode === "mission" && MISSION_STORIES[missionId] && (
+                  <section className="border-l-2 border-primary bg-hud-panel px-5 py-4">
+                    <p className="text-[10px] uppercase tracking-[0.35em] text-primary">{MISSION_STORIES[missionId].chapter}</p>
+                    <h2 className="mt-2 font-display text-xl text-foreground">Mission storyline</h2>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{MISSION_STORIES[missionId].setup}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-foreground">{MISSION_STORIES[missionId].stakes}</p>
+                  </section>
                 )}
 
                 <section className="grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
@@ -496,9 +593,10 @@ export default function FpsGame() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => void (connected ? leaveRoom() : joinRoom())}
+                    disabled={joining}
                     className="flex-1 rounded-md bg-primary px-6 py-3 text-sm uppercase tracking-[0.25em] text-primary-foreground"
                   >
-                    {connected ? "Leave room" : "Join room"}
+                    {connected ? "Leave room" : joining ? "Connecting…" : "Join room"}
                   </button>
                   <button
                     onClick={() => setRoom(randomRoomCode())}
@@ -507,6 +605,7 @@ export default function FpsGame() {
                     New code
                   </button>
                 </div>
+                {netError && <p role="alert" className="rounded border border-destructive/60 bg-destructive/10 px-3 py-2 text-sm text-destructive">{netError}</p>}
                 <div className="rounded-lg border border-hud-line bg-hud-panel p-4">
                   <div className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
                     {connected ? `In room ${room} · ${isHost ? "you are host" : "host controls launch"}` : "Not connected"}

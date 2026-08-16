@@ -230,11 +230,11 @@ export class Multiplayer {
     conn.on("data", (raw) => this.onPacket(raw as Packet, conn));
     const drop = () => {
       this.conns = this.conns.filter((c) => c !== conn);
-      const gone = this.members.find((m) => m.id === conn.metadata?.id);
-      void gone;
-      this.members = this.members.filter((m) => m.id !== (conn as DataConnection & { playerId?: string }).playerId);
       const pid = (conn as DataConnection & { playerId?: string }).playerId;
-      if (pid) this.peers.delete(pid);
+      if (pid) {
+        this.members = this.members.filter((m) => m.id !== pid);
+        this.peers.delete(pid);
+      }
       this.broadcastRoster();
     };
     conn.on("close", drop);
@@ -254,7 +254,6 @@ export class Multiplayer {
     switch (packet.k) {
       case "hello": {
         if (!this.host) return;
-        (from as (DataConnection & { playerId?: string }) | null)?.constructor;
         if (from) (from as DataConnection & { playerId?: string }).playerId = packet.member.id;
         this.members = [...this.members.filter((m) => m.id !== packet.member.id), { ...packet.member, host: false }];
         this.broadcastRoster();

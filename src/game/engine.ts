@@ -2003,20 +2003,23 @@ export class Game {
       if (desired.lengthSq() > 0) desired.normalize().multiplyScalar(e.speed * dt);
 
       const next = e.h.root.position.clone().add(desired);
-      const nb = new THREE.Box3().setFromCenterAndSize(
-        new THREE.Vector3(next.x, next.y + 0.9, next.z),
-        new THREE.Vector3(0.8, 1.8, 0.8),
-      );
-      let blocked = false;
-      for (const c of this.colliders) {
-        if (c.box.intersectsBox(nb) && c.box.max.y > next.y + 0.5) {
-          blocked = true;
-          break;
-        }
+      const probe = this.sweep(next.x, next.z, next.y, 0.45, 1.8);
+      if (!probe.blocked) {
+        e.h.root.position.copy(next);
+        e.h.root.position.y = probe.stepY > next.y ? probe.stepY : 0;
+      } else {
+        // slide along the obstacle instead of grinding into it
+        const slide = new THREE.Vector3(-desired.z, 0, desired.x).normalize().multiplyScalar(e.speed * dt);
+        const alt = e.h.root.position.clone().add(slide);
+        if (!this.sweep(alt.x, alt.z, alt.y, 0.45, 1.8).blocked) e.h.root.position.copy(alt);
       }
-      if (!blocked) e.h.root.position.copy(next);
-      else e.h.root.position.add(side.multiplyScalar(dt * e.speed));
-      e.h.root.position.y = 0;
+      const feetY = e.h.root.position.y;
+      let ground = 0;
+      for (const c of this.colliders) {
+        if (!this.overlapsColumn(c.box, e.h.root.position.x, e.h.root.position.z, 0.45)) continue;
+        if (c.box.max.y <= feetY + 0.62 && c.box.max.y > ground) ground = c.box.max.y;
+      }
+      e.h.root.position.y = ground;
 
       e.h.root.rotation.y = Math.atan2(toPlayer.x, toPlayer.z) + Math.PI;
       animateHumanoid(e.h, desired.length() / Math.max(dt, 0.001), this.time, sees && !e.melee);
@@ -2052,7 +2055,23 @@ export class Game {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
       p.vel.y -= 20 * dt;
+      const prev = p.mesh.position.clone();
       p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+      // bounce off world geometry instead of tunnelling through walls
+      for (const c of this.colliders) {
+        if (!c.box.containsPoint(p.mesh.position)) continue;
+        const centre = c.box.getCenter(new THREE.Vector3());
+        const d = prev.clone().sub(centre);
+        const size = c.box.getSize(new THREE.Vector3());
+        const nx = Math.abs(d.x) / Math.max(size.x, 0.001);
+        const ny = Math.abs(d.y) / Math.max(size.y, 0.001);
+        const nz = Math.abs(d.z) / Math.max(size.z, 0.001);
+        const axis: "x" | "y" | "z" = nx > ny && nx > nz ? "x" : ny > nz ? "y" : "z";
+        p.mesh.position.copy(prev);
+        p.vel[axis] *= -0.42;
+        p.vel.multiplyScalar(0.7);
+        break;
+      }
       p.mesh.rotation.x += dt * 6;
       if (p.mesh.position.y < 0.08) {
         p.mesh.position.y = 0.08;

@@ -1706,6 +1706,9 @@ export class Game {
     void import("./economy").then(({ bankEarnings }) =>
       bankEarnings(Math.max(0, cash), Math.max(0, kills), Math.max(0, waves)),
     );
+    void import("./battlepass").then(({ addXp, xpForRun }) =>
+      addXp(xpForRun({ kills: Math.max(0, kills), waves: Math.max(0, waves), score: 0 })),
+    );
   }
 
   private finishRun() {
@@ -1722,6 +1725,10 @@ export class Game {
     this.banked = Math.round(this.earned);
     this.bankedKills = this.kills;
     this.bankedWaves = Math.max(0, this.wave - 1);
+    const won = this.won;
+    void import("./battlepass").then(({ addXp, xpForRun }) =>
+      addXp(xpForRun({ kills: 0, waves: 0, score: this.score, won })),
+    );
   }
 
   /* ---------------- shop ---------------------------------------------- */

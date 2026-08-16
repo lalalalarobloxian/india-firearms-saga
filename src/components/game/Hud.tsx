@@ -17,10 +17,33 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
 
       {/* crosshair / scope */}
       {hud.scoped ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-background">
-          <div className="relative h-[86vh] w-[86vh] rounded-full border-2 border-hud-line bg-transparent shadow-[0_0_0_100vmax_hsl(0_0%_0%/0.95)]">
-            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-foreground/70" />
-            <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-foreground/70" />
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+          <div className="relative h-[92vmin] w-[92vmin] rounded-full border-2 border-black/80 shadow-[0_0_0_100vmax_hsl(0_0%_0%/0.97),inset_0_0_60px_20px_hsl(0_0%_0%/0.55)]">
+            {/* reticle */}
+            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-foreground/60" />
+            <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-foreground/60" />
+            <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
+            {/* mil-dot ladder */}
+            {[-3, -2, -1, 1, 2, 3].map((n) => (
+              <span
+                key={n}
+                className="absolute left-1/2 h-px w-3 -translate-x-1/2 bg-foreground/50"
+                style={{ top: `calc(50% + ${n * 7}%)` }}
+              />
+            ))}
+            {[-3, -2, -1, 1, 2, 3].map((n) => (
+              <span
+                key={`h${n}`}
+                className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-foreground/50"
+                style={{ left: `calc(50% + ${n * 7}%)` }}
+              />
+            ))}
+            {hud.hitmark > 0 && (
+              <div className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rotate-45">
+                <span className="absolute left-1/2 top-0 h-full w-[2px] bg-destructive" />
+                <span className="absolute top-1/2 left-0 h-[2px] w-full bg-destructive" />
+              </div>
+            )}
           </div>
         </div>
       ) : (

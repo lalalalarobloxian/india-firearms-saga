@@ -1706,6 +1706,9 @@ export class Game {
     void import("./economy").then(({ bankEarnings }) =>
       bankEarnings(Math.max(0, cash), Math.max(0, kills), Math.max(0, waves)),
     );
+    void import("./battlepass").then(({ addXp, xpForRun }) =>
+      addXp(xpForRun({ kills: Math.max(0, kills), waves: Math.max(0, waves), score: 0 })),
+    );
   }
 
   private finishRun() {
@@ -1722,6 +1725,10 @@ export class Game {
     this.banked = Math.round(this.earned);
     this.bankedKills = this.kills;
     this.bankedWaves = Math.max(0, this.wave - 1);
+    const won = this.won;
+    void import("./battlepass").then(({ addXp, xpForRun }) =>
+      addXp(xpForRun({ kills: 0, waves: 0, score: this.score, won })),
+    );
   }
 
   /* ---------------- shop ---------------------------------------------- */
@@ -1887,57 +1894,90 @@ export class Game {
     this.vel.y -= 22 * dt;
 
     const step = this.vel.clone().multiplyScalar(dt);
-    const radius = 0.4;
+    const radius = 0.42;
     const eye = this.crouching ? 1.15 : 1.7;
+    const height = this.crouching ? 1.25 : 1.8;
 
-    // axis-separated collision resolution
+    // axis-separated sweep with a CS-style step-up so kerbs, sandbags and
+    // stairs are walkable while walls, crates and pillars stay solid
     for (const axis of ["x", "z"] as const) {
+      if (step[axis] === 0) continue;
       const next = this.pos.clone();
       next[axis] += step[axis];
       const feet = next.y - eye;
-      const boxPlayer = new THREE.Box3().setFromCenterAndSize(
-        new THREE.Vector3(next.x, feet + 0.9, next.z),
-        new THREE.Vector3(radius * 2, 1.8, radius * 2),
-      );
-      let blocked = false;
-      for (const c of this.colliders) {
-        if (c.box.intersectsBox(boxPlayer) && c.box.max.y - feet > 0.55) {
-          blocked = true;
-          break;
-        }
+      const res = this.sweep(next.x, next.z, feet, radius, height);
+      if (res.blocked) {
+        this.vel[axis] = 0;
+        continue;
       }
-      if (!blocked) this.pos[axis] = next[axis];
-      else this.vel[axis] = 0;
+      this.pos[axis] = next[axis];
+      if (this.onGround && res.stepY > feet + 0.02) {
+        // climb the ledge and stay grounded
+        this.pos.y = res.stepY + eye;
+        this.vel.y = Math.max(this.vel.y, 0);
+      }
     }
 
     // vertical
     this.pos.y += step.y;
+    const feet = this.pos.y - eye;
     let groundY = 0;
-    const feetBox = new THREE.Box3().setFromCenterAndSize(
-      new THREE.Vector3(this.pos.x, this.pos.y - eye + 0.2, this.pos.z),
-      new THREE.Vector3(radius * 2, 0.5, radius * 2),
-    );
     for (const c of this.colliders) {
-      if (
-        this.pos.x > c.box.min.x - radius &&
-        this.pos.x < c.box.max.x + radius &&
-        this.pos.z > c.box.min.z - radius &&
-        this.pos.z < c.box.max.z + radius &&
-        c.box.max.y <= this.pos.y - eye + 0.6
-      ) {
-        groundY = Math.max(groundY, c.box.max.y);
-      }
+      if (!this.overlapsColumn(c.box, this.pos.x, this.pos.z, radius)) continue;
+      if (c.box.max.y <= feet + 0.35 && c.box.max.y > groundY) groundY = c.box.max.y;
     }
-    void feetBox;
-    if (this.pos.y - eye <= groundY) {
+    if (feet <= groundY) {
       this.pos.y = groundY + eye;
       this.vel.y = 0;
       this.onGround = true;
-    } else this.onGround = false;
+    } else {
+      this.onGround = false;
+      // head bump — stop rising into a ceiling instead of clipping through it
+      if (this.vel.y > 0) {
+        const headBox = new THREE.Box3().setFromCenterAndSize(
+          new THREE.Vector3(this.pos.x, this.pos.y + 0.12, this.pos.z),
+          new THREE.Vector3(radius * 2, 0.24, radius * 2),
+        );
+        for (const c of this.colliders) {
+          if (c.box.intersectsBox(headBox)) {
+            this.vel.y = 0;
+            break;
+          }
+        }
+      }
+    }
 
     const lim = ARENA / 2 - 2.4;
     this.pos.x = clamp(this.pos.x, -lim, lim);
     this.pos.z = clamp(this.pos.z, -lim, lim);
+  }
+
+  /** true when the (x,z) column of a capsule overlaps a collider footprint */
+  private overlapsColumn(box: THREE.Box3, x: number, z: number, radius: number) {
+    return (
+      x > box.min.x - radius && x < box.max.x + radius && z > box.min.z - radius && z < box.max.z + radius
+    );
+  }
+
+  /**
+   * Collision probe for a capsule standing at (x,z) with its feet at `feet`.
+   * Returns whether the move is blocked and the highest walkable ledge found.
+   */
+  private sweep(x: number, z: number, feet: number, radius: number, height: number, maxStep = 0.62) {
+    let blocked = false;
+    let stepY = feet;
+    for (const c of this.colliders) {
+      if (!this.overlapsColumn(c.box, x, z, radius)) continue;
+      if (c.box.max.y <= feet + 0.02) continue; // already below the feet
+      if (c.box.min.y >= feet + height) continue; // clears the head
+      if (c.box.max.y - feet <= maxStep) {
+        stepY = Math.max(stepY, c.box.max.y);
+        continue; // steppable ledge
+      }
+      blocked = true;
+      break;
+    }
+    return { blocked, stepY };
   }
 
   private updateEnemies(dt: number) {
@@ -1970,20 +2010,23 @@ export class Game {
       if (desired.lengthSq() > 0) desired.normalize().multiplyScalar(e.speed * dt);
 
       const next = e.h.root.position.clone().add(desired);
-      const nb = new THREE.Box3().setFromCenterAndSize(
-        new THREE.Vector3(next.x, next.y + 0.9, next.z),
-        new THREE.Vector3(0.8, 1.8, 0.8),
-      );
-      let blocked = false;
-      for (const c of this.colliders) {
-        if (c.box.intersectsBox(nb) && c.box.max.y > next.y + 0.5) {
-          blocked = true;
-          break;
-        }
+      const probe = this.sweep(next.x, next.z, next.y, 0.45, 1.8);
+      if (!probe.blocked) {
+        e.h.root.position.copy(next);
+        e.h.root.position.y = probe.stepY > next.y ? probe.stepY : 0;
+      } else {
+        // slide along the obstacle instead of grinding into it
+        const slide = new THREE.Vector3(-desired.z, 0, desired.x).normalize().multiplyScalar(e.speed * dt);
+        const alt = e.h.root.position.clone().add(slide);
+        if (!this.sweep(alt.x, alt.z, alt.y, 0.45, 1.8).blocked) e.h.root.position.copy(alt);
       }
-      if (!blocked) e.h.root.position.copy(next);
-      else e.h.root.position.add(side.multiplyScalar(dt * e.speed));
-      e.h.root.position.y = 0;
+      const feetY = e.h.root.position.y;
+      let ground = 0;
+      for (const c of this.colliders) {
+        if (!this.overlapsColumn(c.box, e.h.root.position.x, e.h.root.position.z, 0.45)) continue;
+        if (c.box.max.y <= feetY + 0.62 && c.box.max.y > ground) ground = c.box.max.y;
+      }
+      e.h.root.position.y = ground;
 
       e.h.root.rotation.y = Math.atan2(toPlayer.x, toPlayer.z) + Math.PI;
       animateHumanoid(e.h, desired.length() / Math.max(dt, 0.001), this.time, sees && !e.melee);
@@ -2019,7 +2062,23 @@ export class Game {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]!;
       p.vel.y -= 20 * dt;
+      const prev = p.mesh.position.clone();
       p.mesh.position.add(p.vel.clone().multiplyScalar(dt));
+      // bounce off world geometry instead of tunnelling through walls
+      for (const c of this.colliders) {
+        if (!c.box.containsPoint(p.mesh.position)) continue;
+        const centre = c.box.getCenter(new THREE.Vector3());
+        const d = prev.clone().sub(centre);
+        const size = c.box.getSize(new THREE.Vector3());
+        const nx = Math.abs(d.x) / Math.max(size.x, 0.001);
+        const ny = Math.abs(d.y) / Math.max(size.y, 0.001);
+        const nz = Math.abs(d.z) / Math.max(size.z, 0.001);
+        const axis: "x" | "y" | "z" = nx > ny && nx > nz ? "x" : ny > nz ? "y" : "z";
+        p.mesh.position.copy(prev);
+        p.vel[axis] *= -0.42;
+        p.vel.multiplyScalar(0.7);
+        break;
+      }
       p.mesh.rotation.x += dt * 6;
       if (p.mesh.position.y < 0.08) {
         p.mesh.position.y = 0.08;

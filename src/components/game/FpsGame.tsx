@@ -7,6 +7,8 @@ import { Multiplayer, randomRoomCode, type LobbyMember } from "@/game/multiplaye
 import { getReviveQuestion, MISSION_STORIES, type HistoryQuestion } from "@/game/historyContent";
 import { Hud } from "./Hud";
 import { TouchControls } from "./TouchControls";
+import { BattlePassPanel, XpBar } from "./BattlePass";
+import { getBattlePass, type BattlePassState } from "@/game/battlepass";
 
 const CONTROLS: [string, string][] = [
   ["W A S D", "Move"],
@@ -34,7 +36,7 @@ const PAD_CONTROLS: [string, string][] = [
 
 const MENU_MUSIC = "/audio/gamestartup.mp3";
 
-type Tab = "deploy" | "armoury" | "squad" | "settings";
+type Tab = "deploy" | "armoury" | "pass" | "squad" | "settings";
 
 export default function FpsGame() {
   const mount = useRef<HTMLDivElement>(null);
@@ -53,6 +55,7 @@ export default function FpsGame() {
   const [currency, setCurrency] = useState(0);
   const [unlocked, setUnlocked] = useState({ weapon: STARTER_WEAPON_IDS, character: STARTER_CHARACTER_IDS, map: STARTER_MAP_IDS });
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  const [pass, setPass] = useState<BattlePassState>({ xp: 0, claimed: [] });
   const [name, setName] = useState("Jawan");
   const [room, setRoom] = useState(randomRoomCode());
   const [lobby, setLobby] = useState<LobbyMember[]>([]);
@@ -113,6 +116,7 @@ export default function FpsGame() {
     const [profile, unlocks] = await Promise.all([getProfile(), getUnlocked()]);
     setCurrency(profile.currency);
     setSettings({ ...DEFAULT_SETTINGS, ...profile.settings });
+    setPass(getBattlePass());
     setUnlocked({
       weapon: [...new Set([...STARTER_WEAPON_IDS, ...unlocks.weapon])],
       character: [...new Set([...STARTER_CHARACTER_IDS, ...unlocks.character])],
@@ -381,10 +385,11 @@ export default function FpsGame() {
                 co-op through real operations, spend your round economy, unlock fighters and theatres.
               </p>
               <p className="mt-4 font-display text-xl text-primary">₹{currency} banked</p>
+              <XpBar state={pass} />
             </header>
 
             <nav className="flex flex-wrap justify-center gap-2">
-              {(["deploy", "armoury", "squad", "settings"] as Tab[]).map((t) => (
+              {(["deploy", "armoury", "pass", "squad", "settings"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -392,7 +397,7 @@ export default function FpsGame() {
                     tab === t ? "border-primary bg-primary/10 text-primary" : "border-hud-line text-muted-foreground"
                   }`}
                 >
-                  {t}
+                  {t === "pass" ? "battle pass" : t}
                 </button>
               ))}
             </nav>
@@ -571,9 +576,13 @@ export default function FpsGame() {
               </>
             )}
 
+            {tab === "pass" && <BattlePassPanel onChanged={() => void refresh()} />}
+
             {tab === "squad" && (
               <div className="mx-auto w-full max-w-xl space-y-4">
-                <h2 className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Co-op war room</h2>
+                <h2 className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">
+                  Co-op war room · peer-to-peer
+                </h2>
                 <label className="block text-xs uppercase tracking-[0.25em] text-muted-foreground">
                   Callsign
                   <input
@@ -625,8 +634,9 @@ export default function FpsGame() {
                   </ul>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Everyone in the room deploys together when the host presses DEPLOY on the Deploy tab. Teammates
-                  appear in-world with live vitals, shared kill feed and synced waves.
+                  Connections are direct peer-to-peer (WebRTC) — the first player in a room hosts it and everyone
+                  else links straight to them, no game server in between. Everyone deploys together when the host
+                  presses DEPLOY on the Deploy tab, with live vitals, shared kill feed and synced waves.
                 </p>
               </div>
             )}

@@ -168,3 +168,17 @@ export async function purchaseItem(type: ItemType, itemId: string, price: number
 export async function saveSettings(settings: GameSettings): Promise<void> {
   await saveProfile({ settings });
 }
+
+/** Unlocks an item without charging — used by battle pass tier rewards. */
+export async function grantItem(type: ItemType, itemId: string): Promise<void> {
+  const unlocked = await getUnlocked();
+  if (unlocked[type].includes(itemId)) return;
+  unlocked[type].push(itemId);
+  if (localStorageAvailable()) {
+    try {
+      window.localStorage.setItem(UNLOCKED_KEY, JSON.stringify(unlocked));
+    } catch {
+      /* storage blocked */
+    }
+  }
+}

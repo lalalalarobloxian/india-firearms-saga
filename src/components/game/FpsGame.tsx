@@ -576,9 +576,13 @@ export default function FpsGame() {
               </>
             )}
 
+            {tab === "pass" && <BattlePassPanel onChanged={() => void refresh()} />}
+
             {tab === "squad" && (
               <div className="mx-auto w-full max-w-xl space-y-4">
-                <h2 className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">Co-op war room</h2>
+                <h2 className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">
+                  Co-op war room · peer-to-peer
+                </h2>
                 <label className="block text-xs uppercase tracking-[0.25em] text-muted-foreground">
                   Callsign
                   <input
@@ -630,8 +634,9 @@ export default function FpsGame() {
                   </ul>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Everyone in the room deploys together when the host presses DEPLOY on the Deploy tab. Teammates
-                  appear in-world with live vitals, shared kill feed and synced waves.
+                  Connections are direct peer-to-peer (WebRTC) — the first player in a room hosts it and everyone
+                  else links straight to them, no game server in between. Everyone deploys together when the host
+                  presses DEPLOY on the Deploy tab, with live vitals, shared kill feed and synced waves.
                 </p>
               </div>
             )}

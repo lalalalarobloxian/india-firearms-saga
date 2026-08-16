@@ -1,16 +1,18 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import Peer, { type DataConnection } from "peerjs";
 
 /**
- * Realtime co-op / war-scenario networking.
+ * Peer-to-peer co-op / war-scenario networking (WebRTC data channels).
  *
- * Transport: Lovable Cloud realtime channels.
- *  - presence -> lobby roster (who is in the room, which fighter, ready state)
- *  - broadcast "state"  -> 12 Hz player transform + vitals
- *  - broadcast "event"  -> discrete events (kill, wave, grenade, objective, chat)
+ * Topology: star mesh. The first player in a room claims the deterministic
+ * peer id `astra-shastra-<ROOM>` and becomes the host; everyone else connects
+ * straight to that peer over WebRTC and the host relays traffic. No game
+ * server, no database — only the public PeerJS broker is used for the initial
+ * handshake, after which packets travel directly between players.
  *
- * The room host (lowest joinedAt) owns wave progression so every client
- * advances the mission together.
+ *  - "hello" / "roster" -> lobby presence (who is in, fighter, ready state)
+ *  - "state"            -> 12 Hz player transform + vitals
+ *  - "event"            -> discrete events (kill, wave, grenade, objective, chat)
+ *  - "start"            -> host deploys the squad
  */
 
 export interface PeerState {
@@ -66,23 +68,40 @@ export interface StartPayload {
   mode: "survival" | "mission";
 }
 
+type Packet =
+  | { k: "hello"; member: LobbyMember }
+  | { k: "roster"; members: LobbyMember[] }
+  | { k: "state"; s: PeerState }
+  | { k: "event"; e: NetEvent }
+  | { k: "start"; p: StartPayload }
+  | { k: "bye"; id: string };
+
 const SEND_HZ = 12;
+const BROKER_PREFIX = "astra-shastra-";
+
+function hostPeerId(room: string) {
+  return `${BROKER_PREFIX}${room.toLowerCase()}`;
+}
 
 export class Multiplayer {
+  /** logical player id, stable for the whole session */
   readonly id = crypto.randomUUID();
   readonly room: string;
   readonly name: string;
-  private channel: RealtimeChannel | null = null;
+
+  private peer: Peer | null = null;
   private opts: MultiplayerOptions;
   private joinedAt = Date.now();
   private lastSend = 0;
   private ready = false;
-  private rejoinTimer: ReturnType<typeof setTimeout> | null = null;
   private left = false;
-  /** last connection error, surfaced in the lobby UI */
-  error: string | null = null;
+  private rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+  /** host: every guest connection. guest: single uplink to the host. */
+  private conns: DataConnection[] = [];
+  private uplink: DataConnection | null = null;
+  private host = false;
 
-  /** latest known state of every remote player */
+  error: string | null = null;
   peers = new Map<string, PeerState>();
   members: LobbyMember[] = [];
   connected = false;
@@ -94,118 +113,210 @@ export class Multiplayer {
   }
 
   get isHost() {
-    if (this.members.length === 0) return true;
-    const sorted = [...this.members].sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
-    return sorted[0]?.id === this.id;
+    return this.host;
+  }
+
+  private self(): LobbyMember {
+    return {
+      id: this.id,
+      name: this.name,
+      character: this.opts.character,
+      ready: this.ready,
+      joinedAt: this.joinedAt,
+      host: this.host,
+    };
   }
 
   async join() {
     this.left = false;
     this.error = null;
+    this.connected = false;
     this.opts.onConnection?.(false, null);
     if (!this.room) {
       this.error = "Enter a room code";
       this.opts.onConnection?.(false, this.error);
       return;
     }
-    let channel: RealtimeChannel;
     try {
-      channel = supabase.channel(`war:${this.room}`, {
-        config: { presence: { key: this.id }, broadcast: { self: false, ack: true } },
-      });
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : "Multiplayer service unavailable";
-      this.opts.onConnection?.(false, this.error);
-      return;
+      await this.claimHost();
+    } catch {
+      try {
+        await this.joinHost();
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : "Could not reach the room";
+        this.opts.onConnection?.(false, this.error);
+        this.scheduleRejoin();
+        return;
+      }
     }
-    this.channel = channel;
+  }
 
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState<{
-        name: string;
-        character: string;
-        ready: boolean;
-        joinedAt: number;
-      }>();
-      const members: LobbyMember[] = [];
-      for (const [key, entries] of Object.entries(state)) {
-        const first = entries[0];
-        if (!first) continue;
-        members.push({
-          id: key,
-          name: first.name,
-          character: first.character,
-          ready: first.ready,
-          joinedAt: first.joinedAt,
-          host: false,
-        });
-      }
-      members.sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
-      if (members[0]) members[0].host = true;
-      this.members = members;
-      // drop peers that left
-      for (const key of [...this.peers.keys()]) {
-        if (!members.some((m) => m.id === key)) this.peers.delete(key);
-      }
-      this.opts.onLobby?.(members);
-    });
-
-    channel.on("broadcast", { event: "state" }, ({ payload }) => {
-      const s = payload as PeerState;
-      if (!s || s.id === this.id) return;
-      this.peers.set(s.id, s);
-    });
-
-    channel.on("broadcast", { event: "event" }, ({ payload }) => {
-      const e = payload as NetEvent;
-      if (!e || e.from === this.id) return;
-      this.opts.onEvent?.(e);
-    });
-
-    channel.on("broadcast", { event: "start" }, ({ payload }) => {
-      this.opts.onStart?.(payload as StartPayload);
-    });
-
-    await new Promise<void>((resolve) => {
+  /** Try to own the room by taking its deterministic peer id. */
+  private claimHost() {
+    return new Promise<void>((resolve, reject) => {
+      const peer = new Peer(hostPeerId(this.room), { debug: 0 });
       let settled = false;
-      const settle = () => {
-        if (!settled) {
-          settled = true;
-          resolve();
-        }
+      const fail = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        peer.destroy();
+        reject(new Error(msg));
       };
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
+      const timer = setTimeout(() => fail("timeout"), 9000);
+      peer.on("open", () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.peer = peer;
+        this.host = true;
+        this.connected = true;
+        this.members = [this.self()];
+        this.opts.onLobby?.(this.members);
+        this.opts.onConnection?.(true, null);
+        peer.on("connection", (conn) => this.acceptGuest(conn));
+        peer.on("disconnected", () => peer.reconnect());
+        peer.on("error", () => undefined);
+        resolve();
+      });
+      peer.on("error", (err) => fail(err.message || "peer error"));
+    });
+  }
+
+  /** Room already exists — dial the host directly. */
+  private joinHost() {
+    return new Promise<void>((resolve, reject) => {
+      const peer = new Peer({ debug: 0 });
+      let settled = false;
+      const fail = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        peer.destroy();
+        reject(new Error(msg));
+      };
+      const timer = setTimeout(() => fail("Connection timed out — check your network and try again"), 12000);
+      peer.on("open", () => {
+        this.peer = peer;
+        const conn = peer.connect(hostPeerId(this.room), { reliable: true });
+        conn.on("open", () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          this.uplink = conn;
+          this.host = false;
           this.connected = true;
           this.error = null;
+          this.send({ k: "hello", member: this.self() });
           this.opts.onConnection?.(true, null);
-          void channel.track({
-            name: this.name,
-            character: this.opts.character,
-            ready: this.ready,
-            joinedAt: this.joinedAt,
-          });
-          settle();
-          return;
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          resolve();
+        });
+        conn.on("data", (raw) => this.onPacket(raw as Packet, null));
+        conn.on("close", () => {
+          this.uplink = null;
           this.connected = false;
-          this.error = status;
-          this.opts.onConnection?.(false, status);
-          // never leave join() hanging, and retry in the background
-          settle();
-          this.scheduleRejoin();
-        }
+          if (!this.left) {
+            this.error = "Host left the room";
+            this.opts.onConnection?.(false, this.error);
+            this.scheduleRejoin();
+          }
+        });
+        conn.on("error", () => fail("Could not connect to the host"));
       });
-      // hard timeout so the UI can't spin forever on a dead network
-      setTimeout(() => {
-        if (!this.connected && !this.error) {
-          this.error = "Connection timed out — check your network and try again";
-          this.opts.onConnection?.(false, this.error);
-        }
-        settle();
-      }, 8000);
+      peer.on("error", (err) => fail(err.message || "Could not connect to the host"));
     });
+  }
+
+  private acceptGuest(conn: DataConnection) {
+    this.conns.push(conn);
+    conn.on("data", (raw) => this.onPacket(raw as Packet, conn));
+    const drop = () => {
+      this.conns = this.conns.filter((c) => c !== conn);
+      const gone = this.members.find((m) => m.id === conn.metadata?.id);
+      void gone;
+      this.members = this.members.filter((m) => m.id !== (conn as DataConnection & { playerId?: string }).playerId);
+      const pid = (conn as DataConnection & { playerId?: string }).playerId;
+      if (pid) this.peers.delete(pid);
+      this.broadcastRoster();
+    };
+    conn.on("close", drop);
+    conn.on("error", drop);
+  }
+
+  private broadcastRoster() {
+    if (!this.host) return;
+    this.members = [...this.members].sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+    this.members = this.members.map((m) => ({ ...m, host: m.id === this.id }));
+    this.opts.onLobby?.(this.members);
+    this.relay({ k: "roster", members: this.members }, null);
+  }
+
+  private onPacket(packet: Packet, from: DataConnection | null) {
+    if (!packet || typeof packet !== "object") return;
+    switch (packet.k) {
+      case "hello": {
+        if (!this.host) return;
+        (from as (DataConnection & { playerId?: string }) | null)?.constructor;
+        if (from) (from as DataConnection & { playerId?: string }).playerId = packet.member.id;
+        this.members = [...this.members.filter((m) => m.id !== packet.member.id), { ...packet.member, host: false }];
+        this.broadcastRoster();
+        break;
+      }
+      case "roster": {
+        this.members = packet.members;
+        for (const key of [...this.peers.keys()]) {
+          if (!packet.members.some((m) => m.id === key)) this.peers.delete(key);
+        }
+        this.opts.onLobby?.(packet.members);
+        break;
+      }
+      case "state": {
+        if (packet.s.id === this.id) return;
+        this.peers.set(packet.s.id, packet.s);
+        if (this.host) this.relay(packet, from);
+        break;
+      }
+      case "event": {
+        if (packet.e.from === this.id) return;
+        if (this.host) this.relay(packet, from);
+        this.opts.onEvent?.(packet.e);
+        break;
+      }
+      case "start": {
+        if (this.host) this.relay(packet, from);
+        this.opts.onStart?.(packet.p);
+        break;
+      }
+      case "bye": {
+        this.peers.delete(packet.id);
+        this.members = this.members.filter((m) => m.id !== packet.id);
+        if (this.host) this.broadcastRoster();
+        else this.opts.onLobby?.(this.members);
+        break;
+      }
+    }
+  }
+
+  /** host -> all guests (optionally skipping the sender) */
+  private relay(packet: Packet, except: DataConnection | null) {
+    for (const c of this.conns) {
+      if (c === except || !c.open) continue;
+      try {
+        c.send(packet);
+      } catch {
+        /* dropped frame */
+      }
+    }
+  }
+
+  /** send to the rest of the room, whichever side we are on */
+  private send(packet: Packet) {
+    if (this.host) this.relay(packet, null);
+    else if (this.uplink?.open) {
+      try {
+        this.uplink.send(packet);
+      } catch {
+        /* dropped frame */
+      }
+    }
   }
 
   private scheduleRejoin() {
@@ -214,40 +325,38 @@ export class Multiplayer {
       this.rejoinTimer = null;
       if (this.left || this.connected) return;
       void (async () => {
-        try {
-          if (this.channel) await supabase.removeChannel(this.channel);
-          this.channel = null;
-          await this.join();
-        } catch {
-          this.scheduleRejoin();
-        }
+        this.peer?.destroy();
+        this.peer = null;
+        this.conns = [];
+        this.uplink = null;
+        await this.join();
       })();
     }, 2500);
   }
 
   setReady(ready: boolean) {
     this.ready = ready;
-    void this.channel?.track({
-      name: this.name,
-      character: this.opts.character,
-      ready,
-      joinedAt: this.joinedAt,
-    });
+    this.pushSelf();
   }
 
   setCharacter(character: string) {
     this.opts.character = character;
-    void this.channel?.track({
-      name: this.name,
-      character,
-      ready: this.ready,
-      joinedAt: this.joinedAt,
-    });
+    this.pushSelf();
+  }
+
+  private pushSelf() {
+    if (!this.connected) return;
+    if (this.host) {
+      this.members = [...this.members.filter((m) => m.id !== this.id), this.self()];
+      this.broadcastRoster();
+    } else {
+      this.send({ k: "hello", member: this.self() });
+    }
   }
 
   startMatch(mapId: string, mission: string, mode: "survival" | "mission") {
     const payload: StartPayload = { mapId, mission, mode };
-    void this.channel?.send({ type: "broadcast", event: "start", payload });
+    this.send({ k: "start", p: payload });
     this.opts.onStart?.(payload);
   }
 
@@ -263,41 +372,35 @@ export class Multiplayer {
     const now = performance.now();
     if (now - this.lastSend < 1000 / SEND_HZ) return;
     this.lastSend = now;
-    void this.channel?.send({
-      type: "broadcast",
-      event: "state",
-      payload: {
-        ...s,
-        id: this.id,
-        name: this.name,
-        character: this.opts.character,
-        t: now,
-      } satisfies PeerState,
+    this.send({
+      k: "state",
+      s: { ...s, id: this.id, name: this.name, character: this.opts.character, t: now },
     });
   }
 
   sendEvent(e: Omit<NetEvent, "from">) {
-    void this.channel?.send({
-      type: "broadcast",
-      event: "event",
-      payload: { ...e, from: this.id },
-    });
+    this.send({ k: "event", e: { ...e, from: this.id } as NetEvent });
   }
 
   async leave() {
-    this.connected = false;
     this.left = true;
+    this.connected = false;
     if (this.rejoinTimer) {
       clearTimeout(this.rejoinTimer);
       this.rejoinTimer = null;
     }
+    try {
+      this.send({ k: "bye", id: this.id });
+    } catch {
+      /* already gone */
+    }
     this.peers.clear();
     this.members = [];
+    this.conns = [];
+    this.uplink = null;
+    this.peer?.destroy();
+    this.peer = null;
     this.opts.onConnection?.(false, null);
-    if (this.channel) {
-      await supabase.removeChannel(this.channel);
-      this.channel = null;
-    }
   }
 }
 

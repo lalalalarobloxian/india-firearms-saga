@@ -46,6 +46,30 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
             )}
           </div>
         </div>
+      ) : hud.ads && hud.zoom > 1 ? (
+        /* iron-sight / optic aim view: soft vignette + fine reticle, no black block */
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="absolute inset-0"
+            style={{ boxShadow: "inset 0 0 220px 70px hsl(0 0% 0% / 0.55)" }}
+          />
+          <div className="relative h-8 w-8">
+            <span className="absolute left-1/2 top-0 h-2.5 w-[1px] -translate-x-1/2 bg-foreground/70" />
+            <span className="absolute left-1/2 bottom-0 h-2.5 w-[1px] -translate-x-1/2 bg-foreground/70" />
+            <span className="absolute top-1/2 left-0 h-[1px] w-2.5 -translate-y-1/2 bg-foreground/70" />
+            <span className="absolute top-1/2 right-0 h-[1px] w-2.5 -translate-y-1/2 bg-foreground/70" />
+            <span className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
+            {hud.hitmark > 0 && (
+              <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-45">
+                <span className="absolute left-1/2 top-0 h-full w-[2px] bg-destructive" />
+                <span className="absolute top-1/2 left-0 h-[2px] w-full bg-destructive" />
+              </div>
+            )}
+          </div>
+          <div className="absolute bottom-1/3 text-[10px] uppercase tracking-[0.3em] text-primary/80">
+            {hud.zoom.toFixed(1)}×
+          </div>
+        </div>
       ) : (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="relative h-6 w-6">

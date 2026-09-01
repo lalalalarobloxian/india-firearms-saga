@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Game, HudState } from "@/game/engine";
 
 interface Props {
@@ -12,6 +12,10 @@ const STICK_RADIUS = 58;
  * On-screen controls for phones/tablets: left thumb stick to move, right side
  * of the screen to look, and action buttons for fire, aim, jump, crouch,
  * reload, grenade, melee and weapon switching.
+ *
+ * The fire button doubles as a Standoff-2 style aim joystick — hold to shoot,
+ * drag to swing the camera without lifting your thumb. Gyro aiming can be
+ * toggled on for fine adjustments.
  */
 export function TouchControls({ getGame, hud }: Props) {
   const stick = useRef<HTMLDivElement>(null);
@@ -19,6 +23,10 @@ export function TouchControls({ getGame, hud }: Props) {
   const stickId = useRef<number | null>(null);
   const lookId = useRef<number | null>(null);
   const lookLast = useRef({ x: 0, y: 0 });
+  const fireId = useRef<number | null>(null);
+  const fireLast = useRef({ x: 0, y: 0 });
+  const [gyro, setGyro] = useState(false);
+  const [scoped, setScoped] = useState(false);
 
   useEffect(() => {
     const g = getGame();
@@ -27,6 +35,39 @@ export function TouchControls({ getGame, hud }: Props) {
       g?.setFire(false);
     };
   }, [getGame]);
+
+  /* gyroscope aiming — device rotation rate drives small look deltas */
+  useEffect(() => {
+    if (!gyro) return;
+    const onMotion = (e: DeviceMotionEvent) => {
+      const r = e.rotationRate;
+      if (!r) return;
+      const dx = (r.alpha ?? 0) * 0.16;
+      const dy = -(r.beta ?? 0) * 0.16;
+      if (Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) return;
+      getGame()?.lookDelta(dx, dy);
+    };
+    window.addEventListener("devicemotion", onMotion);
+    return () => window.removeEventListener("devicemotion", onMotion);
+  }, [gyro, getGame]);
+
+  const enableGyro = useCallback(async () => {
+    if (gyro) {
+      setGyro(false);
+      return;
+    }
+    type Requestable = { requestPermission?: () => Promise<PermissionState | string> };
+    const dm = DeviceMotionEvent as unknown as Requestable;
+    if (typeof dm.requestPermission === "function") {
+      try {
+        const res = await dm.requestPermission();
+        if (res !== "granted") return;
+      } catch {
+        return;
+      }
+    }
+    setGyro(true);
+  }, [gyro]);
 
   const moveKnob = (dx: number, dy: number) => {
     if (knob.current) knob.current.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -153,6 +194,24 @@ export function TouchControls({ getGame, hud }: Props) {
             Rel
           </button>
         </div>
+        <div className="flex gap-3">
+          <button
+            className={`${btn} h-12 w-12 ${gyro ? "border-primary text-primary" : ""}`}
+            onPointerDown={() => void enableGyro()}
+          >
+            Gyro
+          </button>
+          <button
+            className={`${btn} h-12 w-12 ${scoped ? "border-primary text-primary" : ""}`}
+            onPointerDown={() => {
+              const g = getGame();
+              if (!g) return;
+              setScoped(g.toggleAds());
+            }}
+          >
+            Scope
+          </button>
+        </div>
         <div className="flex items-end gap-3">
           <button
             className={`${btn} h-12 w-12`}
@@ -175,12 +234,40 @@ export function TouchControls({ getGame, hud }: Props) {
           >
             Aim
           </button>
+          {/* fire button = aim joystick: hold to shoot, drag to swing the camera */}
           <button
-            className={`${btn} h-20 w-20 border-primary/70 bg-primary/25 text-xs`}
-            {...hold(
-              () => getGame()?.setFire(true),
-              () => getGame()?.setFire(false),
-            )}
+            className={`${btn} h-20 w-20 touch-none border-primary/70 bg-primary/25 text-xs`}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              fireId.current = e.pointerId;
+              fireLast.current = { x: e.clientX, y: e.clientY };
+              try {
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              } catch {
+                /* capture unsupported */
+              }
+              getGame()?.setFire(true);
+            }}
+            onPointerMove={(e) => {
+              if (fireId.current !== e.pointerId) return;
+              const dx = e.clientX - fireLast.current.x;
+              const dy = e.clientY - fireLast.current.y;
+              fireLast.current = { x: e.clientX, y: e.clientY };
+              getGame()?.lookDelta(dx, dy);
+            }}
+            onPointerUp={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onPointerCancel={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onLostPointerCapture={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onContextMenu={(e) => e.preventDefault()}
           >
             Fire
           </button>

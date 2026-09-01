@@ -74,10 +74,15 @@ type Packet =
   | { k: "state"; s: PeerState }
   | { k: "event"; e: NetEvent }
   | { k: "start"; p: StartPayload }
+  | { k: "ping"; id: string }
+  | { k: "pong"; id: string }
   | { k: "bye"; id: string };
 
 const SEND_HZ = 12;
 const BROKER_PREFIX = "astra-shastra-";
+/** keepalive cadence and how long silence is tolerated before reconnecting */
+const HEARTBEAT_MS = 3000;
+const TIMEOUT_MS = 14000;
 
 function hostPeerId(room: string) {
   return `${BROKER_PREFIX}${room.toLowerCase()}`;
@@ -96,6 +101,12 @@ export class Multiplayer {
   private ready = false;
   private left = false;
   private rejoinTimer: ReturnType<typeof setTimeout> | null = null;
+  private beatTimer: ReturnType<typeof setInterval> | null = null;
+  /** last time we heard anything from the other side (guest) */
+  private lastRecv = Date.now();
+  /** per-connection last-heard, host side */
+  private seen = new WeakMap<DataConnection, number>();
+  private attempts = 0;
   /** host: every guest connection. guest: single uplink to the host. */
   private conns: DataConnection[] = [];
   private uplink: DataConnection | null = null;
@@ -137,18 +148,73 @@ export class Multiplayer {
       this.opts.onConnection?.(false, this.error);
       return;
     }
-    try {
-      await this.claimHost();
-    } catch {
+    // Two peers can race for the host id, and the broker occasionally drops the
+    // first handshake — retry both paths a few times before surfacing an error.
+    let last = "Could not reach the room";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.claimHost();
+        this.startHeartbeat();
+        return;
+      } catch {
+        /* room already owned or id taken — dial the host instead */
+      }
       try {
         await this.joinHost();
-      } catch (error) {
-        this.error = error instanceof Error ? error.message : "Could not reach the room";
-        this.opts.onConnection?.(false, this.error);
-        this.scheduleRejoin();
+        this.startHeartbeat();
         return;
+      } catch (error) {
+        last = error instanceof Error ? error.message : last;
       }
+      await new Promise((r) => setTimeout(r, 700 + attempt * 600));
+      if (this.left) return;
     }
+    this.error = last;
+    this.opts.onConnection?.(false, this.error);
+    this.scheduleRejoin();
+  }
+
+  /**
+   * Keepalive: ping the room on a fixed cadence so WebRTC channels stay warm,
+   * drop guests that go silent, and reconnect when the host stops answering.
+   */
+  private startHeartbeat() {
+    this.lastRecv = Date.now();
+    if (this.beatTimer) clearInterval(this.beatTimer);
+    this.beatTimer = setInterval(() => {
+      if (this.left) return;
+      this.send({ k: "ping", id: this.id });
+      const now = Date.now();
+      if (this.host) {
+        for (const c of [...this.conns]) {
+          const seen = this.seen.get(c) ?? now;
+          if (now - seen > TIMEOUT_MS || !c.open) {
+            try {
+              c.close();
+            } catch {
+              /* already gone */
+            }
+            this.dropConn(c);
+          }
+        }
+      } else if (now - this.lastRecv > TIMEOUT_MS) {
+        this.connected = false;
+        this.error = "Connection lost — reconnecting…";
+        this.opts.onConnection?.(false, this.error);
+        this.uplink = null;
+        this.scheduleRejoin();
+      }
+    }, HEARTBEAT_MS);
+  }
+
+  private dropConn(conn: DataConnection) {
+    this.conns = this.conns.filter((c) => c !== conn);
+    const pid = (conn as DataConnection & { playerId?: string }).playerId;
+    if (pid) {
+      this.members = this.members.filter((m) => m.id !== pid);
+      this.peers.delete(pid);
+    }
+    this.broadcastRoster();
   }
 
   /** Try to own the room by taking its deterministic peer id. */
@@ -227,16 +293,21 @@ export class Multiplayer {
 
   private acceptGuest(conn: DataConnection) {
     this.conns.push(conn);
-    conn.on("data", (raw) => this.onPacket(raw as Packet, conn));
-    const drop = () => {
-      this.conns = this.conns.filter((c) => c !== conn);
-      const pid = (conn as DataConnection & { playerId?: string }).playerId;
-      if (pid) {
-        this.members = this.members.filter((m) => m.id !== pid);
-        this.peers.delete(pid);
+    this.seen.set(conn, Date.now());
+    conn.on("data", (raw) => {
+      this.seen.set(conn, Date.now());
+      this.onPacket(raw as Packet, conn);
+    });
+    // a returning player gets the current roster straight away (state recovery)
+    conn.on("open", () => {
+      this.seen.set(conn, Date.now());
+      try {
+        conn.send({ k: "roster", members: this.members });
+      } catch {
+        /* will land on the next roster broadcast */
       }
-      this.broadcastRoster();
-    };
+    });
+    const drop = () => this.dropConn(conn);
     conn.on("close", drop);
     conn.on("error", drop);
   }

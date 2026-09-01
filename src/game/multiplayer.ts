@@ -74,10 +74,15 @@ type Packet =
   | { k: "state"; s: PeerState }
   | { k: "event"; e: NetEvent }
   | { k: "start"; p: StartPayload }
+  | { k: "ping"; id: string }
+  | { k: "pong"; id: string }
   | { k: "bye"; id: string };
 
 const SEND_HZ = 12;
 const BROKER_PREFIX = "astra-shastra-";
+/** keepalive cadence and how long silence is tolerated before reconnecting */
+const HEARTBEAT_MS = 3000;
+const TIMEOUT_MS = 14000;
 
 function hostPeerId(room: string) {
   return `${BROKER_PREFIX}${room.toLowerCase()}`;

@@ -194,6 +194,24 @@ export function TouchControls({ getGame, hud }: Props) {
             Rel
           </button>
         </div>
+        <div className="flex gap-3">
+          <button
+            className={`${btn} h-12 w-12 ${gyro ? "border-primary text-primary" : ""}`}
+            onPointerDown={() => void enableGyro()}
+          >
+            Gyro
+          </button>
+          <button
+            className={`${btn} h-12 w-12 ${scoped ? "border-primary text-primary" : ""}`}
+            onPointerDown={() => {
+              const g = getGame();
+              if (!g) return;
+              setScoped(g.toggleAds());
+            }}
+          >
+            Scope
+          </button>
+        </div>
         <div className="flex items-end gap-3">
           <button
             className={`${btn} h-12 w-12`}
@@ -216,12 +234,40 @@ export function TouchControls({ getGame, hud }: Props) {
           >
             Aim
           </button>
+          {/* fire button = aim joystick: hold to shoot, drag to swing the camera */}
           <button
-            className={`${btn} h-20 w-20 border-primary/70 bg-primary/25 text-xs`}
-            {...hold(
-              () => getGame()?.setFire(true),
-              () => getGame()?.setFire(false),
-            )}
+            className={`${btn} h-20 w-20 touch-none border-primary/70 bg-primary/25 text-xs`}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              fireId.current = e.pointerId;
+              fireLast.current = { x: e.clientX, y: e.clientY };
+              try {
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              } catch {
+                /* capture unsupported */
+              }
+              getGame()?.setFire(true);
+            }}
+            onPointerMove={(e) => {
+              if (fireId.current !== e.pointerId) return;
+              const dx = e.clientX - fireLast.current.x;
+              const dy = e.clientY - fireLast.current.y;
+              fireLast.current = { x: e.clientX, y: e.clientY };
+              getGame()?.lookDelta(dx, dy);
+            }}
+            onPointerUp={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onPointerCancel={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onLostPointerCapture={() => {
+              fireId.current = null;
+              getGame()?.setFire(false);
+            }}
+            onContextMenu={(e) => e.preventDefault()}
           >
             Fire
           </button>

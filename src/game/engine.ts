@@ -77,6 +77,7 @@ export interface HudState {
   showFps: boolean;
   zoom: number;
   scoped: boolean;
+  ads: boolean;
   lowHealth: number;
 }
 
@@ -1068,6 +1069,7 @@ export class Game {
       const mi = this.weapons.findIndex((w) => w.category === "melee");
       if (mi >= 0) this.selectWeapon(mi);
     }
+    if (code === "keyz") this.toggleAds();
     if (code === "space" && this.onGround && !this.dead) {
       this.vel.y = 7.4;
       this.onGround = false;
@@ -1098,7 +1100,7 @@ export class Game {
 
   private onMouseMove = (e: MouseEvent) => {
     if (document.pointerLockElement !== this.renderer.domElement) return;
-    const sens = 0.0022 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.weapon.zoom) : 1);
+    const sens = 0.0022 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.adsZoom) : 1);
     this.yaw -= e.movementX * sens;
     this.pitch = clamp(this.pitch - e.movementY * sens, -1.5, 1.5);
   };
@@ -1146,7 +1148,7 @@ export class Game {
 
   /** touch look pad / right stick — pixels or scaled units */
   lookDelta(dx: number, dy: number) {
-    const sens = 0.0045 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.weapon.zoom) : 1);
+    const sens = 0.0045 * this.settings.sensitivity * (this.ads ? 1 / Math.sqrt(this.adsZoom) : 1);
     this.yaw -= dx * sens;
     this.pitch = clamp(this.pitch - dy * sens, -1.5, 1.5);
   }
@@ -1160,7 +1162,27 @@ export class Game {
   }
 
   setAds(down: boolean) {
-    this.ads = down && this.weapon.category !== "grenade";
+    this.ads = down && this.weapon.category !== "grenade" && this.weapon.category !== "melee";
+  }
+
+  /** tap-to-scope: sticky ADS for touch and keyboard (Z) */
+  toggleAds() {
+    this.setAds(!this.ads);
+    return this.ads;
+  }
+
+  get isAds() {
+    return this.ads;
+  }
+
+  /**
+   * Effective magnification while aiming. Sniper optics use their own value;
+   * every other firearm gets a real 1.6x+ optic instead of a flat overlay.
+   */
+  private get adsZoom() {
+    const w = this.weapon;
+    if (w.category === "melee" || w.category === "grenade") return 1;
+    return w.scoped ? w.zoom : Math.max(1.6, w.zoom);
   }
 
   setCrouch(down: boolean) {
@@ -1571,8 +1593,7 @@ export class Game {
       weapon: style.weapon,
       scale: rand(0.96, 1.06),
     });
-    const spawn = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)]!;
-    h.root.position.copy(spawn).add(new THREE.Vector3(rand(-3, 3), 0, rand(-3, 3)));
+    h.root.position.copy(this.pickSpawn());
     this.scene.add(h.root);
 
     const hitBody = new THREE.Mesh(
@@ -1893,6 +1914,17 @@ export class Game {
     this.vel.z += (wish.z - this.vel.z) * Math.min(1, accel * dt);
     this.vel.y -= 22 * dt;
 
+    // if we somehow ended up inside geometry (spawn, teleport, lag spike), push out first
+    {
+      const e0 = this.crouching ? 1.15 : 1.7;
+      const feetNow = this.pos.y - e0;
+      const probe = new THREE.Vector3(this.pos.x, feetNow, this.pos.z);
+      if (this.depenetrate(probe, 0.42, this.crouching ? 1.25 : 1.8)) {
+        this.pos.x = probe.x;
+        this.pos.z = probe.z;
+      }
+    }
+
     const step = this.vel.clone().multiplyScalar(dt);
     const radius = 0.42;
     const eye = this.crouching ? 1.15 : 1.7;
@@ -1980,6 +2012,53 @@ export class Game {
     return { blocked, stepY };
   }
 
+  /**
+   * Push a capsule (feet at pos.y) out of any collider it is stuck inside,
+   * along the shallowest horizontal axis. Returns true when it moved.
+   */
+  private depenetrate(pos: THREE.Vector3, radius: number, height: number) {
+    let moved = false;
+    for (const c of this.colliders) {
+      const b = c.box;
+      if (b.max.y <= pos.y + 0.02 || b.min.y >= pos.y + height) continue;
+      if (!this.overlapsColumn(b, pos.x, pos.z, radius)) continue;
+      const left = pos.x - (b.min.x - radius);
+      const right = b.max.x + radius - pos.x;
+      const back = pos.z - (b.min.z - radius);
+      const front = b.max.z + radius - pos.z;
+      const min = Math.min(left, right, back, front);
+      if (min <= 0) continue;
+      if (min === left) pos.x = b.min.x - radius - 0.01;
+      else if (min === right) pos.x = b.max.x + radius + 0.01;
+      else if (min === back) pos.z = b.min.z - radius - 0.01;
+      else pos.z = b.max.z + radius + 0.01;
+      moved = true;
+    }
+    return moved;
+  }
+
+  /** a spawn ring point that is not inside a wall, crate or landmark */
+  private pickSpawn() {
+    const jitter = () => new THREE.Vector3(rand(-3, 3), 0, rand(-3, 3));
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const base = this.spawnPoints[Math.floor(Math.random() * this.spawnPoints.length)];
+      if (!base) break;
+      const p = base.clone().add(jitter());
+      p.y = 0;
+      const lim = ARENA / 2 - 3;
+      p.x = clamp(p.x, -lim, lim);
+      p.z = clamp(p.z, -lim, lim);
+      if (this.sweep(p.x, p.z, 0, 0.45, 1.8).blocked) continue;
+      if (p.distanceTo(this.pos) < 12) continue;
+      return p;
+    }
+    // fallback: force a clear slot near the ring
+    const p = (this.spawnPoints[0] ?? new THREE.Vector3(0, 0, 20)).clone();
+    p.y = 0;
+    this.depenetrate(p, 0.45, 1.8);
+    return p;
+  }
+
   private updateEnemies(dt: number) {
     for (const e of this.enemies) {
       if (e.dead) {
@@ -2014,11 +2093,25 @@ export class Game {
       if (!probe.blocked) {
         e.h.root.position.copy(next);
         e.h.root.position.y = probe.stepY > next.y ? probe.stepY : 0;
-      } else {
-        // slide along the obstacle instead of grinding into it
-        const slide = new THREE.Vector3(-desired.z, 0, desired.x).normalize().multiplyScalar(e.speed * dt);
-        const alt = e.h.root.position.clone().add(slide);
-        if (!this.sweep(alt.x, alt.z, alt.y, 0.45, 1.8).blocked) e.h.root.position.copy(alt);
+      } else if (desired.lengthSq() > 0) {
+        // slide along the obstacle instead of grinding into it (try both sides)
+        const len = e.speed * dt;
+        let moved = false;
+        for (const sign of [1, -1]) {
+          const slide = new THREE.Vector3(-desired.z * sign, 0, desired.x * sign).normalize().multiplyScalar(len);
+          const alt = e.h.root.position.clone().add(slide);
+          if (!this.sweep(alt.x, alt.z, alt.y, 0.45, 1.8).blocked) {
+            e.h.root.position.copy(alt);
+            moved = true;
+            break;
+          }
+        }
+        // wedged inside geometry — push out, and if that fails, respawn clean
+        if (!moved) {
+          if (!this.depenetrate(e.h.root.position, 0.45, 1.8)) {
+            e.h.root.position.copy(this.pickSpawn());
+          }
+        }
       }
       const feetY = e.h.root.position.y;
       let ground = 0;

@@ -2300,8 +2300,9 @@ export class Game {
       teammates,
       fps: this.fps,
       showFps: this.settings.showFps,
-      zoom: this.ads ? w.zoom : 1,
+      zoom: this.ads ? this.adsZoom : 1,
       scoped: !!w.scoped && this.ads,
+      ads: this.ads,
       lowHealth: this.lowHealth,
     });
   }
@@ -2370,7 +2371,7 @@ export class Game {
       new THREE.Vector3(rand(-shake, shake) * 0.3, rand(-shake, shake) * 0.3, 0),
     );
     this.camera.rotation.set(this.pitch + this.recoilPitch, this.yaw + this.recoilYaw, 0, "YXZ");
-    const targetFov = this.settings.fov / (this.ads ? this.weapon.zoom : 1);
+    const targetFov = this.settings.fov / (this.ads ? this.adsZoom : 1);
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
     this.camera.updateProjectionMatrix();
 

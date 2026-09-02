@@ -315,10 +315,12 @@ export function buildViewModel(w: WeaponDef): ViewModel {
   receiver.position.set(0, 0, -L * 0.16);
   g.add(receiver);
 
-  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, L * 0.55), metal);
-  upper.position.set(0, 0.08, -L * 0.2);
+  // charging handle / bolt cover — kept low so it never crosses the sight line
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.036, L * 0.55), metal);
+  upper.position.set(0, w.scoped ? 0.048 : 0.052, -L * 0.2);
   g.add(upper);
   vm.bolt = upper;
+
 
   const handguard = new THREE.Mesh(
     new THREE.BoxGeometry(0.075, 0.08, L * 0.34),
@@ -390,12 +392,19 @@ export function buildViewModel(w: WeaponDef): ViewModel {
     lens.position.set(0, 0.135, -0.29);
     g.add(lens);
   } else {
-    const front = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.055, 0.018), metal);
-    front.position.set(0, 0.1, -L * 0.46);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.05, 0.014), metal);
+    front.position.set(0, 0.098, -L * 0.46);
     g.add(front);
-    const rear = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.018), metal);
-    rear.position.set(0, 0.095, -0.02);
-    g.add(rear);
+    // rear sight is an open notch (two posts) so it never blocks the view
+    for (const x of [-0.026, 0.026]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.042, 0.016), metal);
+      post.position.set(x, 0.092, -0.02);
+      g.add(post);
+    }
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.012, 0.02), metal);
+    base.position.set(0, 0.072, -0.02);
+    g.add(base);
+
   }
 
   if (w.id === "toradar") {

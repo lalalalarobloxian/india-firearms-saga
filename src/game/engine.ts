@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+
 import {
   ALL_WEAPONS,
   CHARACTERS,
@@ -987,13 +989,29 @@ export class Game {
 
   private buildViewScene() {
     this.viewScene.clear();
-    const key = new THREE.DirectionalLight(0xffffff, 2.4);
+    if (!this.viewScene.environment) {
+      try {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        this.viewScene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        this.viewScene.environmentIntensity = 0.9;
+        pmrem.dispose();
+      } catch {
+        /* env map is a nicety; ignore failures */
+      }
+    }
+    const key = new THREE.DirectionalLight(0xffffff, 3.6);
+
     key.position.set(1.4, 2, 2);
     this.viewScene.add(key);
-    const fill = new THREE.DirectionalLight(this.map.fog, 0.9);
+    const rim = new THREE.DirectionalLight(0xffffff, 1.6);
+    rim.position.set(-1.2, 0.6, -1.4);
+    this.viewScene.add(rim);
+    const fill = new THREE.DirectionalLight(this.map.fog, 1.2);
     fill.position.set(-1.5, -0.5, -1);
     this.viewScene.add(fill);
-    this.viewScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    this.viewScene.add(new THREE.HemisphereLight(0xffffff, this.map.fog, 1.2));
+    this.viewScene.add(new THREE.AmbientLight(0xffffff, 0.9));
+
     this.views = this.weapons.map((w) => {
       const vm = buildViewModel(w);
       vm.group.visible = false;
@@ -2217,8 +2235,10 @@ export class Game {
     const sway = this.vel.length() * 0.006;
     const bob = Math.sin(this.time * 9) * sway;
     const targetPos = this.ads
-      ? new THREE.Vector3(0, w.scoped ? -0.135 : -0.075, -0.16)
-      : new THREE.Vector3(0.19, -0.19, -0.3);
+      ? new THREE.Vector3(0, w.scoped ? -0.128 : -0.1, -0.7)
+      : new THREE.Vector3(0.24, -0.21, -0.62);
+
+
     if (this.meleeSwing > 0) {
       this.meleeSwing -= dt;
       targetPos.x -= Math.sin(this.meleeSwing * 12) * 0.35;

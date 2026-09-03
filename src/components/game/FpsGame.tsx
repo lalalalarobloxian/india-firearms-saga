@@ -8,6 +8,7 @@ import { getReviveQuestion, MISSION_STORIES, type HistoryQuestion } from "@/game
 import { Hud } from "./Hud";
 import { TouchControls } from "./TouchControls";
 import { BattlePassPanel, XpBar } from "./BattlePass";
+import { RewardsPanel } from "./Rewards";
 import { getBattlePass, type BattlePassState } from "@/game/battlepass";
 
 const CONTROLS: [string, string][] = [
@@ -36,7 +37,7 @@ const PAD_CONTROLS: [string, string][] = [
 
 const MENU_MUSIC = "/audio/gamestartup.mp3";
 
-type Tab = "deploy" | "armoury" | "pass" | "squad" | "settings";
+type Tab = "deploy" | "armoury" | "pass" | "depot" | "squad" | "settings";
 
 export default function FpsGame() {
   const mount = useRef<HTMLDivElement>(null);
@@ -389,7 +390,7 @@ export default function FpsGame() {
             </header>
 
             <nav className="flex flex-wrap justify-center gap-2">
-              {(["deploy", "armoury", "pass", "squad", "settings"] as Tab[]).map((t) => (
+              {(["deploy", "armoury", "pass", "depot", "squad", "settings"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -577,6 +578,8 @@ export default function FpsGame() {
             )}
 
             {tab === "pass" && <BattlePassPanel onChanged={() => void refresh()} />}
+
+            {tab === "depot" && <RewardsPanel onChanged={() => void refresh()} />}
 
             {tab === "squad" && (
               <div className="mx-auto w-full max-w-xl space-y-4">

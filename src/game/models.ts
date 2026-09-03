@@ -213,8 +213,11 @@ export interface ViewModel {
 
 export function buildViewModel(w: WeaponDef): ViewModel {
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: w.color, roughness: 0.34, metalness: 0.72 });
-  const wood = new THREE.MeshStandardMaterial({ color: w.woodColor, roughness: 0.7, metalness: 0.04 });
+  const wrap = equippedSkinFor(w.id);
+  const bodyColor = wrap ? new THREE.Color(wrap.color).getHex() : w.color;
+  const accentColor = wrap ? new THREE.Color(wrap.accent).getHex() : w.woodColor;
+  const metal = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.34, metalness: 0.72 });
+  const wood = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.7, metalness: 0.04 });
   const rubber = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.95 });
   const brass = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.3, metalness: 0.9 });
   const skin = new THREE.MeshStandardMaterial({ color: 0x8a5a3b, roughness: 0.6 });

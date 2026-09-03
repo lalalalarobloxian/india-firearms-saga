@@ -1748,6 +1748,9 @@ export class Game {
     void import("./battlepass").then(({ addXp, xpForRun }) =>
       addXp(xpForRun({ kills: Math.max(0, kills), waves: Math.max(0, waves), score: 0 })),
     );
+    void import("./rewards").then(({ trackQuests }) =>
+      trackQuests({ kills: Math.max(0, kills), waves: Math.max(0, waves) }),
+    );
   }
 
   private finishRun() {
@@ -1767,6 +1770,10 @@ export class Game {
     const won = this.won;
     void import("./battlepass").then(({ addXp, xpForRun }) =>
       addXp(xpForRun({ kills: 0, waves: 0, score: this.score, won })),
+    );
+    const finalScore = this.score;
+    void import("./rewards").then(({ trackQuests }) =>
+      trackQuests({ runs: 1, wins: won ? 1 : 0, score: finalScore }),
     );
   }
 

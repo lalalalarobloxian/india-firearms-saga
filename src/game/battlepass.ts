@@ -11,11 +11,12 @@ export interface BattlePassState {
 }
 
 export interface Reward {
-  kind: "cash" | "unlock" | "title";
+  kind: "cash" | "unlock" | "title" | "skin" | "key";
   label: string;
   amount?: number;
   itemType?: ItemType;
   itemId?: string;
+  skinId?: string;
 }
 
 export interface Tier {
@@ -86,6 +87,21 @@ export const TIERS: Tier[] = [
   { tier: 18, reward: { kind: "title", label: 'Title · "Itihaas Veteran"' } },
   { tier: 19, reward: { kind: "cash", label: "₹2,600 supply drop", amount: 2600 } },
   { tier: 20, reward: { kind: "title", label: 'Title · "Field Marshal"' } },
+  { tier: 21, reward: { kind: "skin", label: "Skin · Jungle Warfare (AK-203)", skinId: "ak203-jungle" } },
+  { tier: 22, reward: { kind: "key", label: "2 × Crate Keys", amount: 2 } },
+  { tier: 23, reward: { kind: "skin", label: "Skin · Thar Dust (INSAS)", skinId: "insas-desert" } },
+  { tier: 24, reward: { kind: "cash", label: "₹3,200 supply drop", amount: 3200 } },
+  { tier: 25, reward: { kind: "skin", label: "Skin · Siachen Frost (AK-203)", skinId: "ak203-siachen" } },
+  { tier: 26, reward: { kind: "key", label: "3 × Crate Keys", amount: 3 } },
+  { tier: 27, reward: { kind: "skin", label: "Skin · Azad Hind (Sten)", skinId: "sten-azad" } },
+  { tier: 28, reward: { kind: "skin", label: "Skin · Shikari (Dragunov)", skinId: "sniper-shikari" } },
+  { tier: 29, reward: { kind: "cash", label: "₹4,500 supply drop", amount: 4500 } },
+  { tier: 30, reward: { kind: "skin", label: "Skin · Ghadar 1857 (SMLE)", skinId: "smle-1857" } },
+  { tier: 31, reward: { kind: "key", label: "4 × Crate Keys", amount: 4 } },
+  { tier: 32, reward: { kind: "skin", label: "Skin · Tricolour Vanguard (AK-203)", skinId: "ak203-tricolour" } },
+  { tier: 33, reward: { kind: "title", label: 'Title · "Itihaas Legend"' } },
+  { tier: 34, reward: { kind: "cash", label: "₹6,000 supply drop", amount: 6000 } },
+  { tier: 35, reward: { kind: "skin", label: "Skin · Royal Damascus (Khanda)", skinId: "khanda-royal" } },
 ];
 
 function available(): boolean {
@@ -157,6 +173,14 @@ export async function claimTier(tier: number): Promise<boolean> {
   }
   if (entry.reward.kind === "unlock" && entry.reward.itemType && entry.reward.itemId) {
     await grantItem(entry.reward.itemType, entry.reward.itemId);
+  }
+  if (entry.reward.kind === "skin" && entry.reward.skinId) {
+    const { grantSkin } = await import("./rewards");
+    grantSkin(entry.reward.skinId);
+  }
+  if (entry.reward.kind === "key" && entry.reward.amount) {
+    const { grantKeys } = await import("./rewards");
+    grantKeys(entry.reward.amount);
   }
   write({ ...state, claimed: [...state.claimed, tier] });
   return true;

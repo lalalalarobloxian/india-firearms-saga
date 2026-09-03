@@ -1771,6 +1771,10 @@ export class Game {
     void import("./battlepass").then(({ addXp, xpForRun }) =>
       addXp(xpForRun({ kills: 0, waves: 0, score: this.score, won })),
     );
+    const finalScore = this.score;
+    void import("./rewards").then(({ trackQuests }) =>
+      trackQuests({ runs: 1, wins: won ? 1 : 0, score: finalScore }),
+    );
   }
 
   /* ---------------- shop ---------------------------------------------- */

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { WeaponDef } from "./config";
+import { equippedSkinFor } from "./rewards";
 
 /**
  * Higher-fidelity procedural character + weapon models.

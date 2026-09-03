@@ -398,7 +398,7 @@ export default function FpsGame() {
                     tab === t ? "border-primary bg-primary/10 text-primary" : "border-hud-line text-muted-foreground"
                   }`}
                 >
-                  {t === "pass" ? "battle pass" : t}
+                  {t === "pass" ? "battle pass" : t === "depot" ? "supply depot" : t}
                 </button>
               ))}
             </nav>

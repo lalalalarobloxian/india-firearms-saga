@@ -174,6 +174,14 @@ export async function claimTier(tier: number): Promise<boolean> {
   if (entry.reward.kind === "unlock" && entry.reward.itemType && entry.reward.itemId) {
     await grantItem(entry.reward.itemType, entry.reward.itemId);
   }
+  if (entry.reward.kind === "skin" && entry.reward.skinId) {
+    const { grantSkin } = await import("./rewards");
+    grantSkin(entry.reward.skinId);
+  }
+  if (entry.reward.kind === "key" && entry.reward.amount) {
+    const { grantKeys } = await import("./rewards");
+    grantKeys(entry.reward.amount);
+  }
   write({ ...state, claimed: [...state.claimed, tier] });
   return true;
 }

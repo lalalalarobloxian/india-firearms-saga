@@ -11,11 +11,12 @@ export interface BattlePassState {
 }
 
 export interface Reward {
-  kind: "cash" | "unlock" | "title";
+  kind: "cash" | "unlock" | "title" | "skin" | "key";
   label: string;
   amount?: number;
   itemType?: ItemType;
   itemId?: string;
+  skinId?: string;
 }
 
 export interface Tier {

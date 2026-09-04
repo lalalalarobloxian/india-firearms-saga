@@ -1,6 +1,14 @@
 import { ROUND_SHOP, type HudState } from "@/game/engine";
 
-export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
+export function Hud({
+  hud,
+  onBuy,
+  onToggleBuy,
+}: {
+  hud: HudState;
+  onBuy: (id: string) => void;
+  onToggleBuy?: (open: boolean) => void;
+}) {
   const bar = (v: number, max: number, cls: string) => (
     <div className="h-1.5 w-32 overflow-hidden rounded bg-hud-line/60">
       <div className={`h-full ${cls}`} style={{ width: `${Math.max(0, Math.min(100, (v / max) * 100))}%` }} />
@@ -99,11 +107,16 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
             {hud.waveTotal ? ` / ${hud.waveTotal}` : ""}
           </div>
           <div className="mt-1">{hud.enemies} hostiles · {hud.kills} down</div>
-          {hud.buyPhase && <div className="mt-1 text-primary">Buy phase {hud.buyTime}s · press B</div>}
+          {hud.buyPhase && (
+            <div className="mt-1 text-primary">
+              Buy phase {hud.buyTime}s · press B to {hud.buyOpen ? "close" : "open"}
+            </div>
+          )}
         </div>
         <div className="rounded border border-hud-line bg-hud-panel px-2 py-1.5 text-right md:px-4 md:py-2">
           <div className="font-display text-base text-primary md:text-lg">₹{hud.cash}</div>
           <div className="mt-1 text-[10px]">Score {hud.score}</div>
+          {hud.confetti > 0 && <div className="text-[10px] text-accent">🎉 {hud.confetti} confetti</div>}
           {hud.showFps && <div className="text-[10px]">{hud.fps} fps</div>}
         </div>
       </div>
@@ -177,9 +190,17 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
         </div>
       </div>
 
-      {/* buy menu */}
+      {/* buy menu — toggled with B (or the on-screen button) */}
       {hud.buyPhase && (
-        <BuyMenu hud={hud} onBuy={onBuy} />
+        <>
+          <button
+            onClick={() => onToggleBuy?.(!hud.buyOpen)}
+            className="pointer-events-auto absolute left-1/2 top-16 -translate-x-1/2 rounded border border-primary bg-primary/15 px-4 py-1.5 text-[10px] uppercase tracking-[0.25em] text-primary"
+          >
+            {hud.buyOpen ? "Close buy menu" : "Buy menu (B)"}
+          </button>
+          {hud.buyOpen && <BuyMenu hud={hud} onBuy={onBuy} />}
+        </>
       )}
     </div>
   );
@@ -188,7 +209,7 @@ export function Hud({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void
 function BuyMenu({ hud, onBuy }: { hud: HudState; onBuy: (id: string) => void }) {
   return (
     <div
-      className="pointer-events-auto absolute inset-x-0 top-20 flex gap-2 overflow-x-auto px-3 pb-1 md:inset-x-auto md:bottom-28 md:left-1/2 md:top-auto md:-translate-x-1/2 md:justify-center md:overflow-visible md:px-0"
+      className="pointer-events-auto absolute inset-x-0 top-28 flex gap-2 overflow-x-auto px-3 pb-1 md:inset-x-auto md:bottom-28 md:left-1/2 md:top-auto md:-translate-x-1/2 md:justify-center md:overflow-visible md:px-0"
       data-buy
     >
       {ROUND_SHOP.map((item) => (

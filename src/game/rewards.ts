@@ -77,6 +77,10 @@ export const SKINS: Skin[] = [
   { id: "katta-bazaar", name: "Bazaar Special", weapon: "katta", rarity: "field", color: "#4a3b2f", accent: "#9c8a6a" },
   { id: "khanda-royal", name: "Royal Damascus", weapon: "khanda", rarity: "paramvir", color: "#8a6b1f", accent: "#f0e0a0" },
   { id: "sniper-shikari", name: "Shikari", weapon: "dragunov", rarity: "veteran", color: "#3c3226", accent: "#a8894f" },
+  // event-only wraps — sold in the Inauguration Event, never in crates
+  { id: "ak203-diya", name: "Diya Festival", weapon: "ak203", rarity: "paramvir", color: "#161327", accent: "#f2c14e" },
+  { id: "insas-confetti", name: "Confetti Parade", weapon: "insas", rarity: "veteran", color: "#1f3a5f", accent: "#f27ba0" },
+  { id: "khanda-inaugural", name: "Inaugural Damascus", weapon: "khanda", rarity: "paramvir", color: "#5c1f3a", accent: "#ffd98a" },
 ];
 
 export const CRATES: Crate[] = [

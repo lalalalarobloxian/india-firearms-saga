@@ -39,3 +39,36 @@ export function getReviveQuestion(): HistoryQuestion {
   if (selected) return selected;
   return { question: "When did India become a republic?", answers: ["1947", "1950", "1952", "1962"], correct: 1, fact: "India became a republic on 26 January 1950." };
 }
+export interface CutsceneBeat {
+  caption: string;
+  line: string;
+}
+
+/** Extra closing beat per operation so each cutscene lands on its own note. */
+const MISSION_EPILOGUE: Record<string, string> = {
+  longewala: "Hold the track. When the sun comes up, the Hunters will finish it.",
+  tigerhill: "Climb, clear, plant the flag. One sangar at a time.",
+  jhansi1858: "The Rani rides the walls. Do not let them reach her.",
+  ina1943: "Chalo Delhi — but first, this island.",
+  kerala1700: "The reeds hide friends and enemies alike. Aim carefully.",
+  delhi1648: "Sandstone galleries, close quarters. Take back the Diwan-i-Aam.",
+  saragarhi: "Twenty-one rifles. Keep the heliograph flashing.",
+  kalinga: "Win — and remember what winning costs.",
+  rezangla: "No artillery, no retreat. Count every round.",
+  haifa1918: "Lances against guns. Speed is the only armour you have.",
+  panipat1761: "Hold the centre. The dust will lie about everything else.",
+};
+
+export function cutsceneBeats(missionId: string, missionName: string, year: string): CutsceneBeat[] {
+  const story = MISSION_STORIES[missionId];
+  const beats: CutsceneBeat[] = [
+    { caption: `${missionName} · ${year}`, line: story?.chapter ?? "Operation Itihaas" },
+  ];
+  if (story) {
+    beats.push({ caption: "Situation", line: story.setup });
+    beats.push({ caption: "Your orders", line: story.stakes });
+  }
+  const epilogue = MISSION_EPILOGUE[missionId];
+  if (epilogue) beats.push({ caption: "Final word", line: epilogue });
+  return beats;
+}

@@ -1,4 +1,4 @@
-import { getUnlocked, grantItem, type ItemType } from "./economy";
+import { grantItem, type ItemType } from "./economy";
 import { grantKeys, grantSkin } from "./rewards";
 
 /**
@@ -153,12 +153,8 @@ export function formatCountdown(ms: number) {
 export function addConfetti(count: number): EventState {
   const state = getEventState();
   const next = { ...state, confetti: state.confetti + Math.max(0, Math.round(count)) };
-  writEventState(next);
+  writeState(next);
   return next;
-}
-
-function writEventState(state: EventState) {
-  writeState(state);
 }
 
 export function eventOwned(itemId: string) {
@@ -178,9 +174,4 @@ export async function buyEventItem(itemId: string): Promise<boolean> {
 
   writeState({ confetti: state.confetti - item.price, owned: [...state.owned, itemId] });
   return true;
-}
-
-/** Items unlocked through the event stay listed in the armoury as owned. */
-export async function eventUnlockedIds(): Promise<Record<ItemType, string[]>> {
-  return getUnlocked();
 }

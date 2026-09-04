@@ -74,6 +74,8 @@ export interface HudState {
   character: string;
   buyPhase: boolean;
   buyTime: number;
+  buyOpen: boolean;
+  confetti: number;
   teammates: HudTeammate[];
   fps: number;
   showFps: boolean;
@@ -366,6 +368,9 @@ export class Game {
   private spawnTimer = 0;
   private buyPhase = true;
   private buyTimer = 8;
+  /** Inauguration Event confetti pickups scattered each wave. */
+  private confettiPickups: { mesh: THREE.Mesh; phase: number }[] = [];
+  private confettiRun = 0;
   buyOpen = false;
   private cash = 800;
   private earned = 0;
@@ -1704,6 +1709,7 @@ export class Game {
     this.banner = `WAVE ${this.wave} · ${this.mission.faction.toUpperCase()}`;
     this.bannerUntil = this.time + 2.6;
     this.audio.wave();
+    this.spawnConfetti(2 + (this.wave % 3));
     this.applyCharacter(false);
   }
 
@@ -1775,6 +1781,58 @@ export class Game {
     void import("./rewards").then(({ trackQuests }) =>
       trackQuests({ runs: 1, wins: won ? 1 : 0, score: finalScore }),
     );
+  }
+
+  /* ---------------- inauguration event confetti ----------------------- */
+
+  private spawnConfetti(count: number) {
+    for (let i = 0; i < count; i++) {
+      const geo = new THREE.IcosahedronGeometry(0.22, 0);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xf2c14e,
+        emissive: 0xf2c14e,
+        emissiveIntensity: 0.75,
+        roughness: 0.35,
+        metalness: 0.4,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const x = rand(-26, 26);
+        const z = rand(-26, 26);
+        mesh.position.set(x, 1.1, z);
+        const box = new THREE.Box3().setFromCenterAndSize(
+          mesh.position,
+          new THREE.Vector3(0.6, 1.4, 0.6),
+        );
+        if (!this.colliders.some((c) => c.box.intersectsBox(box))) break;
+      }
+      this.scene.add(mesh);
+      this.confettiPickups.push({ mesh, phase: Math.random() * Math.PI * 2 });
+    }
+  }
+
+  private updateConfetti(dt: number) {
+    for (let i = this.confettiPickups.length - 1; i >= 0; i--) {
+      const p = this.confettiPickups[i]!;
+      p.mesh.rotation.y += dt * 2.4;
+      p.mesh.rotation.x += dt * 1.1;
+      p.mesh.position.y = 1.1 + Math.sin(this.time * 2.2 + p.phase) * 0.16;
+      if (p.mesh.position.distanceTo(this.pos) < 1.5) {
+        this.scene.remove(p.mesh);
+        this.confettiPickups.splice(i, 1);
+        this.confettiRun += 1;
+        this.score += 25;
+        this.audio.pickup();
+        this.banner = "CONFETTI COLLECTED";
+        this.bannerUntil = this.time + 1.1;
+        void import("./event").then(({ addConfetti }) => addConfetti(1));
+      }
+    }
+  }
+
+  private clearConfetti() {
+    this.confettiPickups.forEach((p) => this.scene.remove(p.mesh));
+    this.confettiPickups = [];
   }
 
   /* ---------------- shop ---------------------------------------------- */
@@ -2324,6 +2382,8 @@ export class Game {
       character: this.character.name,
       buyPhase: this.buyPhase,
       buyTime: Math.max(0, Math.ceil(this.buyTimer)),
+      buyOpen: this.buyOpen,
+      confetti: this.confettiRun,
       teammates,
       fps: this.fps,
       showFps: this.settings.showFps,
@@ -2387,6 +2447,7 @@ export class Game {
     }
 
     this.updateEnemies(dt);
+    this.updateConfetti(dt);
     this.updateProjectiles(dt);
     this.updateViewModel(dt);
     this.syncPeers(dt);
@@ -2424,6 +2485,8 @@ export class Game {
     this.projectiles = [];
     this.smokes.forEach((s) => this.scene.remove(s.points));
     this.smokes = [];
+    this.clearConfetti();
+    this.confettiRun = 0;
     this.hp = 100;
     this.armor = 0;
     this.dead = false;

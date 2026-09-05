@@ -598,6 +598,8 @@ export default function FpsGame() {
 
             {tab === "depot" && <RewardsPanel onChanged={() => void refresh()} />}
 
+            {tab === "event" && <EventPanel onChanged={() => void refresh()} />}
+
             {tab === "squad" && (
               <div className="mx-auto w-full max-w-xl space-y-4">
                 <h2 className="text-[11px] uppercase tracking-[0.4em] text-muted-foreground">

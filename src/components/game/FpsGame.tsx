@@ -274,6 +274,18 @@ export default function FpsGame() {
       )}
       {hud && started && touchUi && <TouchControls getGame={getGame} hud={hud} />}
 
+      {cutscene && !started && (
+        <Cutscene
+          missionId={cutscene}
+          missionName={MISSIONS.find((m) => m.id === cutscene)?.name ?? "Operation"}
+          year={MISSIONS.find((m) => m.id === cutscene)?.year ?? ""}
+          onDone={() => {
+            setCutscene(null);
+            setStarted(true);
+          }}
+        />
+      )}
+
       {started && !locked && !hud?.buyOpen && !hud?.dead && !hud?.won && (
         <button
           onClick={() => game.current?.lock()}

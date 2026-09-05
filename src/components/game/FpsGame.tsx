@@ -399,7 +399,7 @@ export default function FpsGame() {
             </header>
 
             <nav className="flex flex-wrap justify-center gap-2">
-              {(["deploy", "armoury", "pass", "depot", "squad", "settings"] as Tab[]).map((t) => (
+              {(["deploy", "armoury", "pass", "depot", "event", "squad", "settings"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}

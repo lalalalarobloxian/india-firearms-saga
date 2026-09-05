@@ -9,6 +9,8 @@ import { Hud } from "./Hud";
 import { TouchControls } from "./TouchControls";
 import { BattlePassPanel, XpBar } from "./BattlePass";
 import { RewardsPanel } from "./Rewards";
+import { EventPanel } from "./EventPanel";
+import { Cutscene } from "./Cutscene";
 import { getBattlePass, type BattlePassState } from "@/game/battlepass";
 
 const CONTROLS: [string, string][] = [
@@ -37,7 +39,7 @@ const PAD_CONTROLS: [string, string][] = [
 
 const MENU_MUSIC = "/audio/gamestartup.mp3";
 
-type Tab = "deploy" | "armoury" | "pass" | "depot" | "squad" | "settings";
+type Tab = "deploy" | "armoury" | "pass" | "depot" | "event" | "squad" | "settings";
 
 export default function FpsGame() {
   const mount = useRef<HTMLDivElement>(null);
@@ -71,6 +73,7 @@ export default function FpsGame() {
 
   const [touchUi, setTouchUi] = useState(false);
   const [padMode, setPadMode] = useState(false);
+  const [cutscene, setCutscene] = useState<string | null>(null);
 
   /**
    * Input detection. Smart boards / large Android panels often report a fine
@@ -262,10 +265,28 @@ export default function FpsGame() {
   return (
     <div className="relative h-[100svh] w-full overflow-hidden bg-background">
       <div ref={mount} className="absolute inset-0" />
-      {hud && started && <Hud hud={hud} onBuy={(id) => game.current?.buy(id)} />}
+      {hud && started && (
+        <Hud
+          hud={hud}
+          onBuy={(id) => game.current?.buy(id)}
+          onToggleBuy={(open) => game.current?.toggleBuy(open)}
+        />
+      )}
       {hud && started && touchUi && <TouchControls getGame={getGame} hud={hud} />}
 
-      {started && !locked && !hud?.dead && !hud?.won && (
+      {cutscene && !started && (
+        <Cutscene
+          missionId={cutscene}
+          missionName={MISSIONS.find((m) => m.id === cutscene)?.name ?? "Operation"}
+          year={MISSIONS.find((m) => m.id === cutscene)?.year ?? ""}
+          onDone={() => {
+            setCutscene(null);
+            setStarted(true);
+          }}
+        />
+      )}
+
+      {started && !locked && !hud?.buyOpen && !hud?.dead && !hud?.won && (
         <button
           onClick={() => game.current?.lock()}
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-md"
@@ -390,7 +411,7 @@ export default function FpsGame() {
             </header>
 
             <nav className="flex flex-wrap justify-center gap-2">
-              {(["deploy", "armoury", "pass", "depot", "squad", "settings"] as Tab[]).map((t) => (
+              {(["deploy", "armoury", "pass", "depot", "event", "squad", "settings"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -398,7 +419,13 @@ export default function FpsGame() {
                     tab === t ? "border-primary bg-primary/10 text-primary" : "border-hud-line text-muted-foreground"
                   }`}
                 >
-                  {t === "pass" ? "battle pass" : t === "depot" ? "supply depot" : t}
+                  {t === "pass"
+                    ? "battle pass"
+                    : t === "depot"
+                      ? "supply depot"
+                      : t === "event"
+                        ? "★ event"
+                        : t}
                 </button>
               ))}
             </nav>
@@ -508,6 +535,8 @@ export default function FpsGame() {
                           setReady(next);
                           net.current.setReady(next);
                         }
+                      } else if (mode === "mission") {
+                        setCutscene(missionId);
                       } else {
                         setStarted(true);
                       }
@@ -580,6 +609,8 @@ export default function FpsGame() {
             {tab === "pass" && <BattlePassPanel onChanged={() => void refresh()} />}
 
             {tab === "depot" && <RewardsPanel onChanged={() => void refresh()} />}
+
+            {tab === "event" && <EventPanel onChanged={() => void refresh()} />}
 
             {tab === "squad" && (
               <div className="mx-auto w-full max-w-xl space-y-4">

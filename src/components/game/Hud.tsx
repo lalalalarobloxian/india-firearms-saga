@@ -116,7 +116,7 @@ export function Hud({
         <div className="rounded border border-hud-line bg-hud-panel px-2 py-1.5 text-right md:px-4 md:py-2">
           <div className="font-display text-base text-primary md:text-lg">₹{hud.cash}</div>
           <div className="mt-1 text-[10px]">Score {hud.score}</div>
-          {hud.confetti > 0 && <div className="text-[10px] text-accent">🎉 {hud.confetti} confetti</div>}
+          {hud.confetti > 0 && <div className="text-[10px] text-accent">◆ {hud.confetti} confetti</div>}
           {hud.showFps && <div className="text-[10px]">{hud.fps} fps</div>}
         </div>
       </div>

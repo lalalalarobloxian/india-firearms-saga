@@ -517,6 +517,8 @@ export default function FpsGame() {
                           setReady(next);
                           net.current.setReady(next);
                         }
+                      } else if (mode === "mission") {
+                        setCutscene(missionId);
                       } else {
                         setStarted(true);
                       }

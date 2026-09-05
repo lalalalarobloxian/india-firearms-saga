@@ -265,10 +265,16 @@ export default function FpsGame() {
   return (
     <div className="relative h-[100svh] w-full overflow-hidden bg-background">
       <div ref={mount} className="absolute inset-0" />
-      {hud && started && <Hud hud={hud} onBuy={(id) => game.current?.buy(id)} />}
+      {hud && started && (
+        <Hud
+          hud={hud}
+          onBuy={(id) => game.current?.buy(id)}
+          onToggleBuy={(open) => game.current?.toggleBuy(open)}
+        />
+      )}
       {hud && started && touchUi && <TouchControls getGame={getGame} hud={hud} />}
 
-      {started && !locked && !hud?.dead && !hud?.won && (
+      {started && !locked && !hud?.buyOpen && !hud?.dead && !hud?.won && (
         <button
           onClick={() => game.current?.lock()}
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-md"

@@ -51,7 +51,7 @@ export function EventPanel({ onChanged }: { onChanged?: () => void }) {
             Buying closes in <span className="font-display text-base text-primary">{formatCountdown(left)}</span>
           </span>
           <span className="text-muted-foreground">
-            🎉 <span className="font-display text-base text-accent">{state.confetti}</span> confetti
+            <span className="font-display text-base text-accent">{state.confetti}</span> confetti
           </span>
         </div>
         <p className="mt-3 text-[11px] text-muted-foreground">
@@ -95,7 +95,7 @@ export function EventPanel({ onChanged }: { onChanged?: () => void }) {
                       : "border border-hud-line text-muted-foreground/60"
                 }`}
               >
-                {have ? "Owned" : !open ? "Window closed" : `🎉 ${item.price}`}
+                {have ? "Owned" : !open ? "Window closed" : `◆ ${item.price}`}
               </button>
             </article>
           );

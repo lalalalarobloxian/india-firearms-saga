@@ -39,7 +39,7 @@ const PAD_CONTROLS: [string, string][] = [
 
 const MENU_MUSIC = "/audio/gamestartup.mp3";
 
-type Tab = "deploy" | "armoury" | "pass" | "depot" | "squad" | "settings";
+type Tab = "deploy" | "armoury" | "pass" | "depot" | "event" | "squad" | "settings";
 
 export default function FpsGame() {
   const mount = useRef<HTMLDivElement>(null);

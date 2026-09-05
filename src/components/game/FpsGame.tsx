@@ -73,6 +73,7 @@ export default function FpsGame() {
 
   const [touchUi, setTouchUi] = useState(false);
   const [padMode, setPadMode] = useState(false);
+  const [cutscene, setCutscene] = useState<string | null>(null);
 
   /**
    * Input detection. Smart boards / large Android panels often report a fine

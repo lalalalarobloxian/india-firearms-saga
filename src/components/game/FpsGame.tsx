@@ -9,6 +9,8 @@ import { Hud } from "./Hud";
 import { TouchControls } from "./TouchControls";
 import { BattlePassPanel, XpBar } from "./BattlePass";
 import { RewardsPanel } from "./Rewards";
+import { EventPanel } from "./EventPanel";
+import { Cutscene } from "./Cutscene";
 import { getBattlePass, type BattlePassState } from "@/game/battlepass";
 
 const CONTROLS: [string, string][] = [

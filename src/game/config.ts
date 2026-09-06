@@ -35,6 +35,8 @@ export interface WeaponDef {
   blastRadius?: number;
   /** Fuse time in seconds for grenades */
   fuse?: number;
+  /** Only obtainable in the Inauguration Event (never sold for cash) */
+  eventOnly?: boolean;
 }
 
 // ---- Starter weapons (free) --------------------------------------------

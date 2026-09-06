@@ -458,6 +458,8 @@ export const ALL_WEAPONS: WeaponDef[] = [
   KHANDA,
   GRENADE_36,
   SMOKE,
+  JVPC,
+  TRICHY,
 ];
 
 // Backward-compatible export: default loadout (starters + melee + grenade)

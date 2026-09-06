@@ -35,6 +35,8 @@ export interface WeaponDef {
   blastRadius?: number;
   /** Fuse time in seconds for grenades */
   fuse?: number;
+  /** Only obtainable in the Inauguration Event (never sold for cash) */
+  eventOnly?: boolean;
 }
 
 // ---- Starter weapons (free) --------------------------------------------
@@ -387,6 +389,61 @@ const SMOKE: WeaponDef = {
   fuse: 2.5,
 };
 
+// ---- Inauguration Event exclusives (confetti only) ---------------------
+const JVPC: WeaponDef = {
+  id: "jvpc",
+  name: "JVPC Amogh",
+  era: "2021 · ARDE (Event)",
+  caliber: "5.56×30mm",
+  mode: "auto",
+  category: "smg",
+  damage: 26,
+  headMult: 2.8,
+  rpm: 850,
+  magSize: 30,
+  reserve: 240,
+  reloadTime: 1.75,
+  spread: 0.03,
+  adsSpread: 0.007,
+  recoil: 0.01,
+  kick: 0.05,
+  range: 170,
+  zoom: 1.5,
+  color: 0x21252b,
+  woodColor: 0xb08d3c,
+  length: 0.7,
+  desc: "Event exclusive. Joint Venture Protective Carbine — feather-light, blistering rate of fire.",
+  price: 0,
+  eventOnly: true,
+};
+
+const TRICHY: WeaponDef = {
+  id: "trichy",
+  name: "Trichy 7.62 Battle Rifle",
+  era: "1965 · OFT Tiruchirappalli (Event)",
+  caliber: "7.62×51mm",
+  mode: "semi",
+  category: "rifle",
+  damage: 52,
+  headMult: 3.2,
+  rpm: 380,
+  magSize: 20,
+  reserve: 140,
+  reloadTime: 2.3,
+  spread: 0.022,
+  adsSpread: 0.003,
+  recoil: 0.02,
+  kick: 0.1,
+  range: 300,
+  zoom: 1.8,
+  color: 0x2a2320,
+  woodColor: 0x7a4a22,
+  length: 1.1,
+  desc: "Event exclusive. Ishapore-pattern battle rifle — one hit, one answer.",
+  price: 0,
+  eventOnly: true,
+};
+
 export const ALL_WEAPONS: WeaponDef[] = [
   INSAS,
   AK203,
@@ -401,6 +458,8 @@ export const ALL_WEAPONS: WeaponDef[] = [
   KHANDA,
   GRENADE_36,
   SMOKE,
+  JVPC,
+  TRICHY,
 ];
 
 // Backward-compatible export: default loadout (starters + melee + grenade)
@@ -523,6 +582,8 @@ export interface MapDef {
   price: number;
   /** visual theme affects shader params */
   theme: "fort" | "snow" | "jungle" | "desert" | "coastal" | "temple";
+  /** Only obtainable in the Inauguration Event (never sold for cash) */
+  eventOnly?: boolean;
 }
 
 export const MAPS: MapDef[] = [
@@ -637,6 +698,52 @@ export const MAPS: MapDef[] = [
     accent: 0x2a8a6a,
     price: 1500,
     theme: "coastal",
+  },
+  // ---- Inauguration Event exclusive theatres (confetti only) ----------
+  {
+    id: "rann",
+    name: "Rann of Kutch Salt Flats",
+    year: "1965 CE",
+    blurb: "Event theatre. Blinding white salt crust, mirage horizons, sunken patrol tracks.",
+    sky: [0x9fc7e8, 0xfff4e0],
+    fog: 0xf2ece0,
+    sun: 0xfffbf0,
+    ground: 0xeee9dc,
+    stone: 0xbfb8a6,
+    accent: 0x6f8fa8,
+    price: 0,
+    theme: "desert",
+    eventOnly: true,
+  },
+  {
+    id: "cellular",
+    name: "Cellular Jail · Port Blair",
+    year: "1906 CE",
+    blurb: "Event theatre. Seven brick wings around a watchtower — corridors, cells, monsoon light.",
+    sky: [0x2b2f3a, 0x8a7a6a],
+    fog: 0x6f6a62,
+    sun: 0xd8c3a0,
+    ground: 0x584f47,
+    stone: 0x8d5b46,
+    accent: 0x3d4a52,
+    price: 0,
+    theme: "fort",
+    eventOnly: true,
+  },
+  {
+    id: "kohima",
+    name: "Kohima Ridge · Nagaland",
+    year: "1944 CE",
+    blurb: "Event theatre. Terraced hill garden turned battlefield — trenches, mist, shattered pines.",
+    sky: [0x3c5648, 0xbfd4c0],
+    fog: 0x9fb3a2,
+    sun: 0xe8ffe0,
+    ground: 0x54613f,
+    stone: 0x6d6f5c,
+    accent: 0x2f6b4a,
+    price: 0,
+    theme: "jungle",
+    eventOnly: true,
   },
 ];
 

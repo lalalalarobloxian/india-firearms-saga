@@ -969,6 +969,74 @@ export class Game {
       for (let i = 0; i < 30; i++) {
         this.addBox(2.2, 0.7, 1.2, rand(-half, half), 0.35, rand(-half, -half + 16), darkMat, true, rand(0, Math.PI));
       }
+    } else if (m.id === "rann") {
+      // salt flats: cracked crust pans, sunken patrol trucks, mirage marker posts
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        const r = rand(14, half - 6);
+        this.addBox(rand(6, 14), 0.35, rand(6, 14), Math.cos(a) * r, 0.17, Math.sin(a) * r, accentMat, false);
+      }
+      for (let i = 0; i < 6; i++) {
+        const x = rand(-half + 8, half - 8);
+        const z = rand(-half + 8, half - 8);
+        this.addBox(5.2, 2.2, 2.4, x, 1.1, z, darkMat, true, rand(0, Math.PI));
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 2.3), darkMat);
+        cab.position.set(x, 2.9, z);
+        cab.castShadow = true;
+        this.worldGroup.add(cab);
+      }
+      for (let i = 0; i < 24; i++) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.6, 6), stoneMat);
+        post.position.set(rand(-half, half), 1.3, rand(-half, half));
+        post.castShadow = true;
+        this.worldGroup.add(post);
+      }
+    } else if (m.id === "cellular") {
+      // seven brick wings radiating from a central watchtower
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.6, 12, 14), stoneMat);
+      tower.position.set(0, 6, 0);
+      tower.castShadow = true;
+      this.worldGroup.add(tower);
+      this.colliders.push({
+        box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(0, 6, 0), new THREE.Vector3(7.2, 12, 7.2)),
+      });
+      for (let wing = 0; wing < 7; wing++) {
+        const a = (wing / 7) * Math.PI * 2;
+        for (let seg = 0; seg < 5; seg++) {
+          const r = 9 + seg * 6.5;
+          const x = Math.cos(a) * r;
+          const z = Math.sin(a) * r;
+          // cell block: two parallel walls forming a corridor
+          this.addBox(4.4, 3.6, 1.1, x, 1.8, z, stoneMat, true, a);
+          if (seg % 2 === 0) {
+            this.addBox(1.1, 3.6, 4.4, x, 1.8, z, darkMat, true, a);
+          }
+        }
+      }
+    } else if (m.id === "kohima") {
+      // terraced hill garden: stepped terraces, trench lines, shattered pines
+      for (let t = 0; t < 5; t++) {
+        this.addBox(46 - t * 8, 1.2, 20, 0, 0.6 + t * 1.2, -18 + t * 7, stoneMat);
+      }
+      for (let i = 0; i < 14; i++) {
+        const x = -40 + i * 6;
+        this.addBox(4.6, 1.4, 1.2, x, 0.7, rand(6, 20), darkMat, true, rand(-0.3, 0.3));
+      }
+      for (let i = 0; i < 26; i++) {
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.35, 0.5, rand(4, 9), 7),
+          new THREE.MeshStandardMaterial({ color: 0x3a2c1e, roughness: 0.95 }),
+        );
+        const x = rand(-half, half);
+        const z = rand(-half, half);
+        trunk.position.set(x, 3, z);
+        trunk.rotation.z = rand(-0.25, 0.25);
+        trunk.castShadow = true;
+        this.worldGroup.add(trunk);
+        this.colliders.push({
+          box: new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(x, 3, z), new THREE.Vector3(1.1, 6, 1.1)),
+        });
+      }
     } else {
       // amber: pillared hall (Diwan-i-Khas) plus a step-well courtyard
       for (let gx = 0; gx < 4; gx++) {

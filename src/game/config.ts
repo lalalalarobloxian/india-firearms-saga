@@ -582,6 +582,8 @@ export interface MapDef {
   price: number;
   /** visual theme affects shader params */
   theme: "fort" | "snow" | "jungle" | "desert" | "coastal" | "temple";
+  /** Only obtainable in the Inauguration Event (never sold for cash) */
+  eventOnly?: boolean;
 }
 
 export const MAPS: MapDef[] = [
